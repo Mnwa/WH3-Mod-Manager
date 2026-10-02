@@ -54,10 +54,10 @@ The exporter also works without the GUI, Steam or Node.js:
 
 ```sh
 cargo run -p wh3-core --bin wh3-meta --locked -- export config.json wh3-metadata.json
-# From the Windows distribution:
-wh3-meta.exe export config.json wh3-metadata.json
-wh3-meta.exe --lang=ru export config.json wh3-metadata.json
+cargo run -p wh3-core --bin wh3-meta --locked -- --lang=ru export config.json wh3-metadata.json
 ```
+
+The CLI is built from source only; release assets ship just the GUI.
 
 The source configuration is never modified. Export includes saved titles, authors,
 categories, tags, Workshop IDs, dependencies and presets when present in the source.
@@ -104,9 +104,9 @@ Publish a GitHub Release whose tag points to a commit containing `release.yml` a
 its scripts. The workflow builds and retains an Actions artifact, then attaches these
 files to the same release:
 
-- `wh3-mod-manager.exe` and `wh3-meta.exe` (Windows x64, unsigned).
+- `wh3-mod-manager.exe` (Windows x64, unsigned).
 - `WH3-Mod-Manager-<tag>-windows-x64.zip` with documentation and the license.
-- `SHA256SUMS.txt` covering both executables and the ZIP.
+- `SHA256SUMS.txt` covering the executable and the ZIP.
 
 Reruns replace matching assets while preserving the release's title, notes and
 prerelease status. The workflow requires an existing published release and never

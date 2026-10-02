@@ -16,7 +16,7 @@ This is a standalone Rust application; Electron is not included in the distribut
 | Presets | Create/update by name, apply, JSON import/export |
 | Legacy presets | Full Mod records and compact entries; old sparse loadOrder reconstructed from names and pinned positions |
 | Missing mods | Report on preset application; automatic subscription is not implemented |
-| Original metadata | `wh3-meta` CLI, GUI export from config, import of v3 games.wh3 and legacy configurations |
+| Original metadata | Source-only `wh3-meta` CLI (not in release assets), GUI export from config, import of v3 games.wh3 and legacy configurations |
 | Titles, authors, categories, tags | Imported, stored in binary format and searchable; category editing remains unported |
 | Persistence | rkyv WHM1, versioned schema, bytecheck, CRC32, atomic replacement and previous-generation backup |
 | Languages | English/Russian switch, persisted binary preference, translated labels, reports, errors and edit menus |

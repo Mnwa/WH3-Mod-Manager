@@ -48,7 +48,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Set package versions from the tag
         run: python .github/scripts/set-release-version.py
-      - run: cargo build --workspace --release --locked --target x86_64-pc-windows-msvc
+      # The wh3-meta CLI stays a source-only tool; the GUI exports metadata itself.
+      - run: cargo build -p wh3-mod-manager --release --locked --target x86_64-pc-windows-msvc
       - name: Package executables
         shell: pwsh
         run: ./.github/scripts/package-windows.ps1 -Tag $env:RELEASE_TAG

@@ -7,7 +7,6 @@ $assets = 'dist/assets'
 if (Test-Path 'dist') { Remove-Item 'dist' -Recurse -Force }
 New-Item -ItemType Directory -Path $package,$assets -Force | Out-Null
 Copy-Item target/x86_64-pc-windows-msvc/release/wh3-mod-manager.exe "$package/"
-Copy-Item target/x86_64-pc-windows-msvc/release/wh3-meta.exe "$package/"
 Copy-Item LICENSE,README.md "$package/"
 Copy-Item docs -Destination "$package/docs" -Recurse
 
