@@ -1,0 +1,20 @@
+[package]
+name = "wh3-mod-manager"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+wh3-core = { path = "../core" }
+gpui-kit = "=0.6.4"
+serde_json.workspace = true
+
+[dev-dependencies]
+gpui-kit = { version = "=0.6.4", features = ["test-support"] }
+
+[lints]
+workspace = true
+
+[[test]]
+name = "visual"
+harness = false

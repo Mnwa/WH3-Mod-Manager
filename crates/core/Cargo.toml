@@ -1,0 +1,21 @@
+[package]
+name = "wh3-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tempfile.workspace = true
+dirs = "7"
+rkyv = { version = "=0.8.17", default-features = false, features = ["std", "bytecheck", "little_endian", "unaligned", "pointer_width_32"] }
+crc32fast = "1"
+
+[lints]
+workspace = true
+
+[[bench]]
+name = "catalog"
+harness = false
