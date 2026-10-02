@@ -184,9 +184,10 @@ the original WH3 Mod Manager too.
 
 Open **Settings → Find the mod that causes a problem…**. The manager switches off half of
 your mods; play, then answer *Problem is still there* or *Problem is gone*. After a few
-rounds it names the mod (mods that need each other are tested together). Your list is
-saved as the preset "Before problem search" and restored at the end, with or without
-the culprit.
+rounds it names the mod. A tested mod always runs with the mods it requires, and only
+mods that require each other are named together. Your list is saved under
+*Saved automatically → Before problem search* and restored at the end, with the culprit or without it and the
+mods that require it.
 </details>
 
 <details>

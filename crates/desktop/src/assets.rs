@@ -6,6 +6,7 @@ use std::borrow::Cow;
 gpui_kit::assets::icon_assets!(
     ExtraIcons,
     [
+        AppWindow,
         ArrowDownToLine,
         ArrowUpToLine,
         Clock,

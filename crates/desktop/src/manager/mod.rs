@@ -38,6 +38,7 @@ mod settings_menu;
 mod settings_staging;
 mod sharing;
 mod sidebar;
+mod snapshot_view;
 mod staging_control;
 mod steam;
 mod toolbar;

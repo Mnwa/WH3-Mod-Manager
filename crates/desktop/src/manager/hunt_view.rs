@@ -14,19 +14,36 @@ impl Manager {
         let l = self.language;
         let search = &hunt.search;
         let (title, detail) = if hunt.found {
-            let names: Vec<&str> = search
-                .suspects
-                .iter()
-                .take(3)
-                .map(|&i| &*self.catalog.mods[i].title)
-                .collect();
-            (
-                crate::ui_text!(l, "Found it: {}", "Нашли: {}", names.join(", ")),
+            let detail = if search.suspects.len() == 1 {
+                l.text(
+                    "Restore your list without it, or as it was.",
+                    "Верните свой список без него или как было.",
+                )
+            } else {
                 l.text(
                     "These mods need each other, so they were tested together. Restore your list with or without them.",
-                    "Эти моды проверялись вместе. Верните свой список — с ними или без них.",
+                    "Эти моды нужны друг другу, поэтому проверялись вместе. Верните свой список — с ними или без них.",
                 )
-                .to_owned(),
+            };
+            let detail = if hunt.dependents.is_empty() {
+                detail.to_owned()
+            } else {
+                crate::ui_text!(
+                    l,
+                    "{} Restoring without it also switches off {} mods that require it.",
+                    "{} Без него отключатся и моды, которым он нужен: {}.",
+                    detail,
+                    hunt.dependents.len()
+                )
+            };
+            (
+                crate::ui_text!(
+                    l,
+                    "Found it: {}",
+                    "Нашли: {}",
+                    self.hunt_names(&search.suspects)
+                ),
+                detail,
             )
         } else {
             (
@@ -45,15 +62,6 @@ impl Manager {
                     search.remaining_steps()
                 ),
             )
-        };
-        let detail = if hunt.found && search.suspects.len() == 1 {
-            l.text(
-                "Restore your list without it, or as it was.",
-                "Верните свой список без него или как было.",
-            )
-            .to_owned()
-        } else {
-            detail
         };
         let actions = if hunt.found {
             div()

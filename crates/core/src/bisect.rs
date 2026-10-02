@@ -1,26 +1,32 @@
 //! Finding the mod behind a problem by halving the suspects, like the original's
 //! "Bisect Mod List", but as a guided search instead of a pile of presets.
 //!
-//! Mods that require each other stay in the same half, so a test never fails only
-//! because a requirement was switched off.
+//! Each test enables part of the suspects together with every mod they require, so a
+//! test never fails only because a requirement was switched off. Requirements travel
+//! with the mods that need them instead of welding linked mods into one group: in a
+//! large list most mods are linked through a few frameworks or overhauls, and such a
+//! group could never be split, so the search used to "find" half of the list at once.
 use crate::catalog::Catalog;
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
-/// Suspects grouped so that requirement-linked mods share a group; groups keep the
-/// order of `suspects`.
-pub fn groups(catalog: &Catalog, suspects: &[usize]) -> Vec<Vec<usize>> {
-    let members: HashSet<usize> = suspects.iter().copied().collect();
+/// Requirements of each mod in `pool`, limited to `pool`: Workshop requirements and pack
+/// dependencies. Mods outside the pool were not enabled before the search, so the
+/// search must not switch them on.
+pub fn requirements(catalog: &Catalog, pool: &[usize]) -> HashMap<usize, Vec<usize>> {
     let mut by_workshop: HashMap<&str, usize> = HashMap::new();
     let mut by_name: HashMap<String, usize> = HashMap::new();
-    for &index in suspects {
+    for &index in pool {
         let item = &catalog.mods[index];
         if !item.workshop_id.is_empty() {
             by_workshop.insert(&item.workshop_id, index);
         }
         by_name.insert(item.name.to_lowercase(), index);
     }
-    let mut links: HashMap<usize, Vec<usize>> = HashMap::new();
-    for &index in suspects {
+    let mut result = HashMap::new();
+    for &index in pool {
         let item = &catalog.mods[index];
         let required = item
             .metadata
@@ -31,55 +37,29 @@ pub fn groups(catalog: &Catalog, suspects: &[usize]) -> Vec<Vec<usize>> {
             .dependencies
             .iter()
             .filter_map(|name| by_name.get(&name.to_lowercase()).copied());
-        for other in required.chain(packs).filter(|other| *other != index) {
-            links.entry(index).or_default().push(other);
-            links.entry(other).or_default().push(index);
+        let mut needs: Vec<usize> = required.chain(packs).filter(|&m| m != index).collect();
+        needs.sort_unstable();
+        needs.dedup();
+        if !needs.is_empty() {
+            result.insert(index, needs);
         }
     }
-    let rank: HashMap<usize, usize> = suspects.iter().enumerate().map(|(i, &m)| (m, i)).collect();
-    let mut seen = HashSet::new();
-    let mut groups = Vec::new();
-    for &start in suspects {
-        if !seen.insert(start) {
-            continue;
-        }
-        let mut group = vec![start];
-        let mut stack = vec![start];
-        while let Some(current) = stack.pop() {
-            for &next in links.get(&current).into_iter().flatten() {
-                if members.contains(&next) && seen.insert(next) {
-                    group.push(next);
-                    stack.push(next);
-                }
-            }
-        }
-        group.sort_by_key(|member| rank.get(member).copied().unwrap_or(usize::MAX));
-        groups.push(group);
-    }
-    groups
+    result
 }
 
-/// Split whole groups into a tested half and the rest, as close to half the mods as
-/// possible. `None` when the suspects cannot be split any further.
-pub fn split(groups: &[Vec<usize>]) -> Option<(Vec<usize>, Vec<usize>)> {
-    if groups.len() < 2 {
-        return None;
-    }
-    let total: usize = groups.iter().map(Vec::len).sum();
-    let target = total.div_ceil(2);
-    // The boundary after which the running count is closest to the target; ties take
-    // the larger first half, like the original. Both halves stay non-empty.
-    let mut best = (usize::MAX, 0, 1);
-    let mut count = 0;
-    for (boundary, group) in groups.iter().enumerate().take(groups.len() - 1) {
-        count += group.len();
-        let distance = count.abs_diff(target);
-        if distance < best.0 || (distance == best.0 && count > best.1) {
-            best = (distance, count, boundary + 1);
+/// `mods` plus everything they require, directly or through other mods.
+pub fn closure(
+    requirements: &HashMap<usize, Vec<usize>>,
+    mods: impl IntoIterator<Item = usize>,
+) -> HashSet<usize> {
+    let mut result = HashSet::new();
+    let mut stack: Vec<usize> = mods.into_iter().collect();
+    while let Some(index) = stack.pop() {
+        if result.insert(index) {
+            stack.extend(requirements.get(&index).into_iter().flatten().copied());
         }
     }
-    let (first, rest) = groups.split_at(best.2);
-    Some((first.concat(), rest.concat()))
+    result
 }
 
 /// The state of one search.
@@ -87,42 +67,139 @@ pub fn split(groups: &[Vec<usize>]) -> Option<(Vec<usize>, Vec<usize>)> {
 pub struct Search {
     /// Mods that may still cause the problem, in load order.
     pub suspects: Vec<usize>,
-    /// The half enabled for the current test.
+    /// Suspects enabled for the current test, in load order.
     pub testing: Vec<usize>,
-    /// The other half, switched off for the current test.
+    /// Suspects switched off for the current test, in load order.
     pub resting: Vec<usize>,
+    /// Every mod to enable for the current test: `testing` plus the cleared mods they
+    /// require. Once the search is over, the culprit with its requirements.
+    pub enabled: Vec<usize>,
     pub step: usize,
+    /// Every mod in the search, in load order, and what each of them requires.
+    pool: Arc<Vec<usize>>,
+    requirements: Arc<HashMap<usize, Vec<usize>>>,
 }
 
 impl Search {
-    /// Start with the given suspects; `None` when there is nothing to narrow down.
+    /// Start with the given suspects (the enabled mods, in load order); `None` when
+    /// there is nothing to narrow down.
     pub fn start(catalog: &Catalog, suspects: Vec<usize>) -> Option<Self> {
-        let (testing, resting) = split(&groups(catalog, &suspects))?;
-        Some(Self {
-            suspects,
-            testing,
-            resting,
+        let requirements = Arc::new(requirements(catalog, &suspects));
+        let mut search = Self {
+            testing: vec![],
+            resting: vec![],
+            enabled: vec![],
             step: 1,
-        })
+            pool: Arc::new(suspects.clone()),
+            suspects,
+            requirements,
+        };
+        search.split().then_some(search)
     }
 
     /// Record the test result. Returns `false` once the culprit is narrowed down to
     /// `suspects`, which can no longer be split.
-    pub fn answer(&mut self, catalog: &Catalog, problem_remains: bool) -> bool {
+    pub fn answer(&mut self, problem_remains: bool) -> bool {
         self.suspects = if problem_remains {
             std::mem::take(&mut self.testing)
         } else {
             std::mem::take(&mut self.resting)
         };
-        match split(&groups(catalog, &self.suspects)) {
-            Some((testing, resting)) => {
-                self.testing = testing;
-                self.resting = resting;
-                self.step += 1;
-                true
-            }
-            None => false,
+        if self.split() {
+            self.step += 1;
+            return true;
         }
+        self.testing.clear();
+        self.resting.clear();
+        let enabled = closure(&self.requirements, self.suspects.iter().copied());
+        self.enabled = self.in_load_order(&enabled);
+        false
+    }
+
+    /// Choose the suspects for the next test: about half of them, each brought in with
+    /// its requirements. `false` when no test can tell the suspects apart, which only
+    /// happens for a single mod or mods that require each other.
+    fn split(&mut self) -> bool {
+        let members: HashSet<usize> = self.suspects.iter().copied().collect();
+        let suspects_in = |set: &HashSet<usize>| set.iter().filter(|m| members.contains(m)).count();
+        let total = self.suspects.len();
+        let target = total.div_ceil(2);
+        let mut enabled = HashSet::new();
+        let mut count = 0;
+        for &index in &self.suspects {
+            if enabled.contains(&index) {
+                continue;
+            }
+            let mut added = closure(&self.requirements, [index]);
+            added.retain(|m| !enabled.contains(m));
+            let new = suspects_in(&added);
+            if count + new <= target && count + new < total {
+                enabled.extend(added);
+                count += new;
+            }
+        }
+        if count == 0 {
+            // Every suspect needs more than half of the others: test the smallest
+            // requirement chain that still leaves someone out.
+            let Some(smallest) = self
+                .suspects
+                .iter()
+                .map(|&index| closure(&self.requirements, [index]))
+                .filter(|set| suspects_in(set) < total)
+                .min_by_key(|set| suspects_in(set))
+            else {
+                return false;
+            };
+            enabled = smallest;
+        }
+        (self.testing, self.resting) = self.suspects.iter().partition(|m| enabled.contains(m));
+        self.enabled = self.in_load_order(&enabled);
+        true
+    }
+
+    fn in_load_order(&self, set: &HashSet<usize>) -> Vec<usize> {
+        self.pool
+            .iter()
+            .copied()
+            .filter(|m| set.contains(m))
+            .collect()
+    }
+
+    /// Mods in the search that need a suspect, directly or through other mods; they
+    /// cannot work once the suspects are switched off.
+    pub fn dependents(&self) -> Vec<usize> {
+        let suspects: HashSet<usize> = self.suspects.iter().copied().collect();
+        self.pool
+            .iter()
+            .copied()
+            .filter(|index| !suspects.contains(index))
+            .filter(|&index| {
+                closure(&self.requirements, [index])
+                    .iter()
+                    .any(|m| suspects.contains(m))
+            })
+            .collect()
+    }
+
+    /// Follow a rescan that renumbered the catalog. The current test stays as it is so
+    /// the next answer still describes it; mods that are gone are dropped.
+    pub fn remap(&mut self, new_index: impl Fn(usize) -> Option<usize>) {
+        let map = |list: &[usize]| {
+            list.iter()
+                .filter_map(|&m| new_index(m))
+                .collect::<Vec<_>>()
+        };
+        self.suspects = map(&self.suspects);
+        self.testing = map(&self.testing);
+        self.resting = map(&self.resting);
+        self.enabled = map(&self.enabled);
+        self.pool = Arc::new(map(&self.pool));
+        self.requirements = Arc::new(
+            self.requirements
+                .iter()
+                .filter_map(|(&m, needs)| Some((new_index(m)?, map(needs))))
+                .collect(),
+        );
     }
 
     /// Tests still needed in the worst case after the current one.

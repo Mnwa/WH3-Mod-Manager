@@ -3,8 +3,8 @@
 //! still there, and the suspects halve until one mod (or one linked group) is left.
 use super::Manager;
 use gpui_kit::*;
-use std::collections::HashSet;
-use wh3_core::{bisect::Search, message};
+use std::collections::{HashMap, HashSet};
+use wh3_core::{bisect::Search, catalog::Catalog, message};
 
 /// The list before the search, kept as a preset so closing the manager mid-search
 /// never loses it.
@@ -16,6 +16,8 @@ pub(crate) struct State {
     pub history: Vec<Search>,
     /// Set once the suspects cannot be split further.
     pub found: bool,
+    /// Mods that require the found ones, switched off with them on request.
+    pub dependents: Vec<usize>,
 }
 
 impl Manager {
@@ -28,8 +30,8 @@ impl Manager {
             )
             .into(),
             l.text(
-                "Half of your enabled mods are switched off at a time. After each game, tell the manager whether the problem is still there. It assumes one mod causes it. Your list is saved as the preset “Before problem search” and restored at the end.",
-                "Каждый раз отключается половина включённых модов. После каждой игры скажите менеджеру, осталась ли проблема. Предполагается, что виноват один мод. Ваш список сохранится как пресет «Before problem search» и вернётся в конце.",
+                "Half of your enabled mods are switched off at a time. After each game, tell the manager whether the problem is still there. It assumes one mod causes it. Your list is saved under “Before problem search” in the sidebar and restored at the end.",
+                "Каждый раз отключается половина включённых модов. После каждой игры скажите менеджеру, осталась ли проблема. Предполагается, что виноват один мод. Ваш список сохранится в боковой панели как «До поиска проблемы» и вернётся в конце.",
             ),
             l.text("Start", "Начать"),
             |this, cx| this.start_hunt(cx),
@@ -60,19 +62,16 @@ impl Manager {
             search,
             history: vec![],
             found: false,
+            dependents: vec![],
         });
         self.apply_hunt_step(cx);
     }
 
-    /// Enable the half under test plus always-enabled mods.
+    /// Enable the suspects under test, their requirements and always-enabled mods.
     fn apply_hunt_step(&mut self, cx: &mut Context<Self>) {
         let Some(hunt) = &self.hunt else { return };
         let mut enabled: HashSet<usize> = self.always_enabled_indices();
-        if hunt.found {
-            enabled.extend(hunt.search.suspects.iter().copied());
-        } else {
-            enabled.extend(hunt.search.testing.iter().copied());
-        }
+        enabled.extend(hunt.search.enabled.iter().copied());
         self.enabled = enabled;
         self.dirty = true;
         self.refresh_if_enabled_matters(cx);
@@ -81,11 +80,53 @@ impl Manager {
     }
 
     pub(super) fn answer_hunt(&mut self, problem_remains: bool, cx: &mut Context<Self>) {
-        let catalog = self.catalog.clone();
         let Some(hunt) = &mut self.hunt else { return };
         hunt.history.push(hunt.search.clone());
-        hunt.found = !hunt.search.answer(&catalog, problem_remains);
+        hunt.found = !hunt.search.answer(problem_remains);
+        if hunt.found {
+            hunt.dependents = hunt.search.dependents();
+        }
+        if hunt.found && hunt.search.suspects.is_empty() {
+            // Only possible when every mod of the blamed half was removed mid-search.
+            self.end_hunt(false, cx);
+            self.status = message!(
+                "The suspected mods were removed during the search; your list is back",
+                "Подозреваемые моды удалены во время поиска; ваш список возвращён"
+            );
+            return;
+        }
         self.apply_hunt_step(cx);
+    }
+
+    /// Keep the search on the same mods after a rescan renumbered the catalog.
+    pub(super) fn remap_hunt(&mut self, previous: &Catalog) {
+        let Some(hunt) = &mut self.hunt else { return };
+        let catalog = &self.catalog;
+        let by_path: HashMap<&std::path::Path, usize> = catalog
+            .mods
+            .iter()
+            .enumerate()
+            .map(|(index, item)| (item.path.as_path(), index))
+            .collect();
+        let new_index = |index: usize| {
+            let item = previous.mods.get(index)?;
+            by_path.get(item.path.as_path()).copied().or_else(|| {
+                catalog
+                    .by_name
+                    .get(&item.name.to_lowercase())?
+                    .first()
+                    .copied()
+            })
+        };
+        hunt.search.remap(new_index);
+        for search in &mut hunt.history {
+            search.remap(new_index);
+        }
+        hunt.dependents = hunt
+            .dependents
+            .iter()
+            .filter_map(|&m| new_index(m))
+            .collect();
     }
 
     pub(super) fn undo_hunt_answer(&mut self, cx: &mut Context<Self>) {
@@ -93,6 +134,7 @@ impl Manager {
         if let Some(previous) = hunt.history.pop() {
             hunt.search = previous;
             hunt.found = false;
+            hunt.dependents.clear();
             self.apply_hunt_step(cx);
         }
     }
@@ -110,24 +152,45 @@ impl Manager {
             return;
         };
         self.apply_preset(&before, cx);
-        if disable_found && hunt.found {
+        let disable_found = disable_found && hunt.found;
+        let dependents = &hunt.dependents;
+        if disable_found {
+            // Mods that need the culprit would only break the game in its place.
             let always = self.always_enabled_indices();
-            for index in &hunt.search.suspects {
+            for index in hunt.search.suspects.iter().chain(dependents) {
                 if !always.contains(index) {
                     self.enabled.remove(index);
                 }
             }
             self.refresh_if_enabled_matters(cx);
         }
-        self.status = if disable_found {
-            message!(
-                "Your list is back, without the {} mods that caused the problem",
-                "Ваш список возвращён без модов, вызвавших проблему: {}",
-                hunt.search.suspects.len()
-            )
-        } else {
-            message!("Your mod list is back", "Ваш список модов возвращён")
+        self.status = match (disable_found, dependents.len()) {
+            (false, _) => message!("Your mod list is back", "Ваш список модов возвращён"),
+            (true, 0) => message!(
+                "Your list is back without the problem mod: {}",
+                "Ваш список возвращён без проблемного мода: {}",
+                self.hunt_names(&hunt.search.suspects)
+            ),
+            (true, count) => message!(
+                "Your list is back without the problem mod ({}) and {} mods that require it",
+                "Ваш список возвращён без проблемного мода ({}); отключены и моды, которым он нужен: {}",
+                self.hunt_names(&hunt.search.suspects),
+                count
+            ),
         };
         cx.notify();
+    }
+
+    /// Titles of the found mods for messages, shortened after three.
+    pub(super) fn hunt_names(&self, mods: &[usize]) -> String {
+        let mut names: Vec<&str> = mods
+            .iter()
+            .take(3)
+            .map(|&index| &*self.catalog.mods[index].title)
+            .collect();
+        if mods.len() > 3 {
+            names.push("…");
+        }
+        names.join(", ")
     }
 }
