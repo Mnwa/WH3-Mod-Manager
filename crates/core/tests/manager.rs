@@ -284,6 +284,28 @@ fn update_is_offered_only_for_newer_releases_with_executable_and_checksums() {
 }
 
 #[test]
+fn update_stages_the_downloaded_executable_without_truncating_it() {
+    use wh3_core::update::{EXE_ASSET, INSTALLED_EXE, verify_executable};
+    // Mirrors how self_update extracts a bare executable: the download and the
+    // extracted copy share one temporary folder. Equal names emptied the download.
+    let dir = tempfile::tempdir().unwrap();
+    let mut exe = b"MZ".to_vec();
+    exe.resize(4096, 0x90);
+    std::fs::write(dir.path().join(EXE_ASSET), &exe).unwrap();
+    self_update::Extract::from_source(dir.path().join(EXE_ASSET))
+        .extract_file(dir.path(), INSTALLED_EXE)
+        .unwrap();
+    let staged = dir.path().join(INSTALLED_EXE);
+    assert_eq!(std::fs::read(&staged).unwrap(), exe);
+    verify_executable(&staged).unwrap();
+
+    for invalid in [&b""[..], b"MZ", &[0u8; 128]] {
+        std::fs::write(&staged, invalid).unwrap();
+        assert!(verify_executable(&staged).is_err());
+    }
+}
+
+#[test]
 fn original_v2_preset_orders_enabled_mods_by_name_and_pins_like_the_original() {
     // The original launches `sortByNameAndLoadOrder(enabled)`: code-unit name order
     // with pinned mods spliced in at their index; list order does not matter.

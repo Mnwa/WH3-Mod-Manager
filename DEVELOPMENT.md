@@ -140,7 +140,8 @@ cargo test -p wh3-core --release --test real_data -- --ignored --nocapture
   Sampo prepares a draft release PR with synchronized versions and changelogs.
 - `release.yml` runs when a GitHub Release is published. It checks out the release
   tag, builds the Windows x64 executable with the latest stable Rust and attaches:
-  - `wh3-mod-manager.exe` (unsigned; used by the self-updater),
+  - `wh3-mod-manager-windows-x64.exe` (unsigned; used by the self-updater, which
+    installs it as `wh3-mod-manager.exe`),
   - `steam_api64.dll` (Steamworks redistributable, refreshed by the self-updater),
   - `WH3-Mod-Manager-<tag>-windows-x64.zip` with both, the documentation and the license,
   - `SHA256SUMS.txt` covering all of the above.
