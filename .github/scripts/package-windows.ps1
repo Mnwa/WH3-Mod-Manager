@@ -19,7 +19,7 @@ Get-ChildItem "$package/*.exe" | Sort-Object Name | ForEach-Object {
 $archive = if ($Tag) { "WH3-Mod-Manager-$Tag-windows-x64.zip" } else { 'WH3-Mod-Manager-windows-x64.zip' }
 Compress-Archive -Path "$package/*" -DestinationPath "$assets/$archive"
 Copy-Item "$package/*.exe" "$assets/"
-Get-ChildItem "$assets/*" -File | Sort-Object Name | ForEach-Object {
+Get-ChildItem "$assets/*" -File -Exclude 'SHA256SUMS.txt' | Sort-Object Name | ForEach-Object {
     $hash = Get-FileHash $_.FullName -Algorithm SHA256
     "$($hash.Hash.ToLower())  $($_.Name)"
 } | Set-Content "$assets/SHA256SUMS.txt" -Encoding utf8
