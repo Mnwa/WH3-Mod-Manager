@@ -21,17 +21,17 @@ jobs:
     name: Core tests and formatting
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@v4
       - name: Install latest stable Rust
         run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@v2
       - name: Test release versioning
         run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
       - run: cargo fmt --all --check
       - run: cargo clippy -p wh3-core --all-targets --locked -- -D warnings
       - run: cargo test -p wh3-core --locked
       - run: cargo bench -p wh3-core --bench catalog --locked | tee catalog-benchmark.txt
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@v4
         with:
           name: catalog-benchmark
           path: catalog-benchmark.txt
@@ -44,17 +44,17 @@ jobs:
     env:
       RUSTFLAGS: -C target-feature=+crt-static
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@v4
       - name: Install latest stable Rust
         run: rustup toolchain install stable --profile minimal --component clippy --target x86_64-pc-windows-msvc
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
       - run: cargo build --workspace --release --locked --target x86_64-pc-windows-msvc
       - name: Package executables
         shell: pwsh
         run: ./.github/scripts/package-windows.ps1
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@v4
         with:
           name: WH3-Mod-Manager-windows-x64
           path: dist/assets/*
@@ -65,12 +65,12 @@ jobs:
     runs-on: macos-15
     needs: core
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@v4
       - run: rustup toolchain install stable --profile minimal --component clippy
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: visual-macos
