@@ -8479,7 +8479,7 @@ dependencies = [
 
 [[package]]
 name = "wh3-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "crc32fast",
  "dirs 7.0.0",
@@ -8501,7 +8501,7 @@ dependencies = [
 
 [[package]]
 name = "wh3-mod-manager"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "embed-resource",
  "gpui-kit",
