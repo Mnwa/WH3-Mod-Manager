@@ -8380,6 +8380,7 @@ dependencies = [
  "dirs 7.0.0",
  "lz4_flex",
  "lzma-rs",
+ "notify",
  "regex",
  "rkyv",
  "ruzstd",
@@ -8388,6 +8389,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "steamworks",
+ "sys-locale",
  "tempfile",
  "thiserror 2.0.21",
 ]
@@ -8396,8 +8398,10 @@ dependencies = [
 name = "wh3-mod-manager"
 version = "0.2.0"
 dependencies = [
+ "embed-resource",
  "gpui-kit",
  "mimalloc3",
+ "resvg 0.46.0",
  "rust-i18n",
  "serde_json",
  "wh3-core",

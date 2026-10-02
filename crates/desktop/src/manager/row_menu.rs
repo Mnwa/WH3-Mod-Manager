@@ -30,6 +30,8 @@ struct Snapshot {
     pinned: bool,
     /// Number of mods the action applies to (the selection or this row).
     group: usize,
+    in_data: bool,
+    can_link: bool,
 }
 
 impl Manager {
@@ -58,6 +60,8 @@ impl Manager {
             steam: self.steam_available(),
             pinned: self.rules.pinned.contains(&index),
             group: self.targets(index).len(),
+            in_data: item.source == wh3_core::catalog::Source::Data,
+            can_link: self.can_link,
         });
         let (manager, l, busy, demo) =
             (cx.entity().downgrade(), self.language, self.busy, self.demo);
@@ -195,8 +199,12 @@ impl Manager {
                             .on_click(move |_, _, cx| cx.open_url(&steam)),
                     );
                 if let Ok(id) = s.workshop.parse::<u64>() {
-                    let (update, unsubscribe, title) =
-                        (manager.clone(), manager.clone(), s.title.clone());
+                    let (update, unsubscribe, reinstall, title) = (
+                        manager.clone(),
+                        manager.clone(),
+                        manager.clone(),
+                        s.title.clone(),
+                    );
                     menu = menu
                         .item(
                             PopupMenuItem::new(
@@ -207,6 +215,17 @@ impl Manager {
                             .on_click(move |_, _, cx| {
                                 let _ = update.update(cx, |this, cx| {
                                     this.steam_action(Request::Download { ids: vec![id] }, cx)
+                                });
+                            }),
+                        )
+                        .item(
+                            PopupMenuItem::new(
+                                l.text("Reinstall from Workshop…", "Переустановить из Workshop…"),
+                            )
+                            .disabled(!s.steam)
+                            .on_click(move |_, window, cx| {
+                                let _ = reinstall.update(cx, |this, cx| {
+                                    this.confirm_reinstall(id, index, window, cx)
                                 });
                             }),
                         )
@@ -243,6 +262,15 @@ impl Manager {
                 s.path.clone(),
                 s.path.to_string_lossy().into_owned(),
                 s.name.to_string(),
+            );
+            let menu = super::row_menu_data::data_items(
+                menu,
+                manager.clone(),
+                l,
+                index,
+                s.in_data,
+                s.can_link,
+                busy || demo,
             );
             menu.item(
                 PopupMenuItem::new(l.text("Show in folder", "Показать в папке"))

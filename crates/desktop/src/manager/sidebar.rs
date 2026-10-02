@@ -1,71 +1,116 @@
-//! Left panel: list filters, categories and presets.
-use super::{
-    Filter, Manager,
-    presets::PresetAction,
-    view::{button, vertical_scrollbar},
-};
+//! Left panel: which mods to show, categories, load-order rules and presets.
+use super::{Filter, Manager, view::vertical_scrollbar};
 use crate::theme;
 use gpui_kit::{
     assets::IconName,
     component::{
-        Disableable, Selectable, Sizable,
+        Selectable, Sizable,
         button::{Button, ButtonVariants},
-        input::Input,
-        menu::{DropdownMenu as _, PopupMenuItem},
     },
     prelude::*,
     *,
 };
 use std::sync::Arc;
 
-fn caption(text: &'static str) -> Div {
+/// Section heading: sentence case, quiet, so the controls under it carry the weight.
+pub(super) fn caption(text: &'static str) -> Div {
     div()
-        .mt_3()
+        .mt_4()
         .mb_1()
+        .px_1()
         .text_xs()
+        .font_weight(FontWeight::SEMIBOLD)
         .text_color(theme::muted())
         .child(text)
 }
 
+/// A short explanation under a control, written for someone who never read a guide.
+pub(super) fn hint(text: impl Into<SharedString>) -> Div {
+    div()
+        .px_1()
+        .text_xs()
+        .text_color(theme::muted())
+        .child(text.into())
+}
+
+/// A navigation entry with a right-aligned count.
+fn nav_item(
+    id: impl Into<ElementId>,
+    label: SharedString,
+    count: Option<usize>,
+    active: bool,
+) -> Button {
+    Button::new(id)
+        .ghost()
+        .small()
+        .w_full()
+        .selected(active)
+        .cursor_pointer()
+        .accessibility_label(label.clone())
+        .child(
+            div()
+                .w_full()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap_2()
+                .child(div().min_w_0().truncate().child(label))
+                .children(count.map(|n| {
+                    div()
+                        .text_xs()
+                        .text_color(if active {
+                            theme::text()
+                        } else {
+                            theme::muted()
+                        })
+                        .child(n.to_string())
+                })),
+        )
+}
+
 impl Manager {
+    /// Counts come from the enabled and hidden sets, never from a library scan.
+    fn filter_counts(&self) -> [usize; 4] {
+        let hidden = self.hidden_indices();
+        let hidden_enabled = hidden.iter().filter(|i| self.enabled.contains(i)).count();
+        let shown = self.catalog.mods.len().saturating_sub(hidden.len());
+        let enabled = self.enabled.len().saturating_sub(hidden_enabled);
+        [shown, enabled, shown.saturating_sub(enabled), hidden.len()]
+    }
+
     fn filters(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let l = self.language;
-        let hidden = self.settings.hidden.len();
-        div().flex().flex_col().gap_1().children(
+        let [all, enabled, disabled, hidden] = self.filter_counts();
+        div().flex().flex_col().gap_0p5().children(
             [
-                (
-                    Filter::All,
-                    "all",
-                    l.text("All mods", "Все моды").to_string(),
-                ),
+                (Filter::All, "all", l.text("All mods", "Все моды"), all),
                 (
                     Filter::Enabled,
                     "enabled",
-                    l.text("Enabled", "Включённые").to_string(),
+                    l.text("Enabled", "Включённые"),
+                    enabled,
                 ),
                 (
                     Filter::Disabled,
                     "disabled",
-                    l.text("Disabled", "Отключённые").to_string(),
+                    l.text("Disabled", "Отключённые"),
+                    disabled,
                 ),
                 (
                     Filter::Hidden,
                     "hidden",
-                    crate::ui_text!(l, "Hidden ({})", "Скрытые ({})", hidden),
+                    l.text("Hidden", "Скрытые"),
+                    hidden,
                 ),
             ]
-            .map(|(filter, id, label)| {
-                Button::new(id)
-                    .label(label)
-                    .small()
-                    .w_full()
-                    .cursor_pointer()
-                    .when(self.filter == filter, |b| b.primary())
-                    .on_click(cx.listener(move |this, _, _, cx| {
+            .map(|(filter, id, label, count)| {
+                nav_item(id, label.into(), Some(count), self.filter == filter).on_click(
+                    cx.listener(move |this, _, _, cx| {
                         this.filter = filter;
                         this.refresh_query(cx);
                         cx.notify();
-                    }))
+                    }),
+                )
             }),
         )
     }
@@ -79,28 +124,27 @@ impl Manager {
                 cx.processor(|this, range: std::ops::Range<usize>, _, cx| {
                     range
                         .map(|i| {
-                            let (category, label): (Option<Arc<str>>, SharedString) = match i {
-                                0 => (
-                                    None,
-                                    this.language.text("All categories", "Все категории").into(),
-                                ),
-                                _ => {
-                                    let (name, count) = &this.categories[i - 1];
-                                    (Some(name.clone()), format!("{name} · {count}").into())
-                                }
-                            };
+                            let (category, label, count): (Option<Arc<str>>, SharedString, _) =
+                                match i {
+                                    0 => (
+                                        None,
+                                        this.language
+                                            .text("Any category", "Любая категория")
+                                            .into(),
+                                        None,
+                                    ),
+                                    _ => {
+                                        let (name, count) = &this.categories[i - 1];
+                                        (Some(name.clone()), name.to_string().into(), Some(*count))
+                                    }
+                                };
                             let active = this.category == category;
                             div().h(px(30.)).py_0p5().child(
-                                Button::new(("category", i))
-                                    .label(label)
-                                    .xsmall()
-                                    .w_full()
-                                    .ghost()
-                                    .when(active, |b| b.selected(true))
-                                    .cursor_pointer()
-                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                nav_item(("category", i), label, count, active).on_click(
+                                    cx.listener(move |this, _, _, cx| {
                                         this.set_category_filter(category.clone(), cx)
-                                    })),
+                                    }),
+                                ),
                             )
                         })
                         .collect()
@@ -110,72 +154,54 @@ impl Manager {
         )
     }
 
-    fn preset_row(&self, index: usize, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let (l, busy, manager) = (self.language, self.busy, cx.entity().downgrade());
-        let name: SharedString = self.settings.presets[index].name.clone().into();
+    fn load_order_section(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let l = self.language;
+        let troubled =
+            !self.rules.overridden.is_empty() || !self.rules.resolution.dropped.is_empty();
+        let pinned = self.rules.pinned.len();
         div()
-            .h(px(34.))
-            .py_0p5()
             .flex()
+            .flex_col()
             .gap_1()
+            .child(caption(l.text("Load order", "Порядок загрузки")))
+            .child(hint(l.text(
+                "Mods higher in the list win when they change the same thing.",
+                "Мод выше в списке побеждает, если моды меняют одно и то же.",
+            )))
             .child(
-                Button::new(("preset", index))
-                    .label(name.clone())
-                    .small()
-                    .flex_1()
-                    .min_w_0()
-                    .disabled(busy)
-                    .when(!busy, |b| b.cursor_pointer())
-                    .tooltip(l.text(
-                        "Apply: enable exactly these mods in this order",
-                        "Применить: включить ровно эти моды в этом порядке",
-                    ))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.preset_action(index, PresetAction::Apply, cx)
-                    })),
-            )
-            .child(
-                Button::new(("preset-menu", index))
-                    .icon(IconName::Ellipsis)
-                    .small()
-                    .ghost()
-                    .disabled(busy)
-                    .when(!busy, |b| b.cursor_pointer())
-                    .tooltip(crate::ui_text!(
+                Button::new("rules")
+                    .icon(if troubled {
+                        IconName::TriangleAlert
+                    } else {
+                        IconName::ListOrdered
+                    })
+                    .label(crate::ui_text!(
                         l,
-                        "Preset actions: {}",
-                        "Действия с пресетом: {}",
-                        name
+                        "Order rules ({})",
+                        "Правила порядка ({})",
+                        self.rules.resolution.accepted.len()
                     ))
-                    .dropdown_menu(move |menu, _, _| {
-                        let item = |label: &'static str, action: PresetAction| {
-                            let manager = manager.clone();
-                            PopupMenuItem::new(label).on_click(move |_, _, cx| {
-                                let _ = manager
-                                    .update(cx, |this, cx| this.preset_action(index, action, cx));
-                            })
-                        };
-                        menu.item(item(l.text("Apply", "Применить"), PresetAction::Apply))
-                            .item(item(
-                                l.text("Enable its mods too", "Добавить его моды"),
-                                PresetAction::Merge,
-                            ))
-                            .item(item(
-                                l.text("Disable its mods", "Отключить его моды"),
-                                PresetAction::Subtract,
-                            ))
-                            .separator()
-                            .item(item(
-                                l.text("Replace with current list", "Заменить текущим списком"),
-                                PresetAction::Replace,
-                            ))
-                            .item(item(l.text("Delete", "Удалить"), PresetAction::Delete))
-                    }),
+                    .small()
+                    .w_full()
+                    .cursor_pointer()
+                    .tooltip(l.text(
+                        "“Load A before B” rules from you and from mods; applied automatically",
+                        "Правила «A перед B» от вас и от модов; применяются автоматически",
+                    ))
+                    .on_click(cx.listener(|this, _, window, cx| this.open_rules(window, cx))),
             )
+            .when(pinned > 0, |section| {
+                section.child(hint(crate::ui_text!(
+                    l,
+                    "{} mods stay where you dragged them.",
+                    "Перетащенных вручную модов: {}. Они остаются на месте.",
+                    pinned
+                )))
+            })
     }
 
     pub(super) fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let (l, available) = (self.language, !self.busy);
+        let l = self.language;
         div()
             .w(px(240.))
             .flex_shrink_0()
@@ -188,65 +214,14 @@ impl Manager {
             .bg(theme::panel())
             .border_r_1()
             .border_color(theme::border())
-            .child(caption(l.text("LIBRARY", "БИБЛИОТЕКА")).mt_0())
+            .child(caption(l.text("Show", "Показать")).mt_0())
             .child(self.filters(cx))
-            .child(
-                div()
-                    .flex()
-                    .gap_2()
-                    .mt_1()
-                    .child(
-                        button("enable-visible", l.text("Enable", "Включить"), available)
-                            .tooltip(l.text("Enable all mods in the current search results", "Включить все моды текущего результата поиска"))
-                            .on_click(cx.listener(|this, _, _, cx| this.bulk_toggle(true, cx))),
-                    )
-                    .child(
-                        button("disable-visible", l.text("Disable", "Отключить"), available)
-                            .tooltip(l.text(
-                                "Disable all mods in the current search results, except always-enabled ones",
-                                "Отключить все моды текущего результата поиска, кроме всегда включённых",
-                            ))
-                            .on_click(cx.listener(|this, _, _, cx| this.bulk_toggle(false, cx))),
-                    ),
-            )
             .when(!self.categories.is_empty(), |bar| {
-                bar.child(caption(l.text("CATEGORIES", "КАТЕГОРИИ"))).child(self.category_list(cx))
+                bar.child(caption(l.text("Categories", "Категории")))
+                    .child(self.category_list(cx))
             })
-            .child(caption(l.text("LOAD ORDER", "ПОРЯДОК ЗАГРУЗКИ")))
-            .child(
-                Button::new("rules")
-                    .label(crate::ui_text!(
-                        l,
-                        "Rules · {} · pinned {}",
-                        "Правила · {} · закреплено {}",
-                        self.rules.resolution.accepted.len(),
-                        self.rules.pinned.len()
-                    ))
-                    .small()
-                    .w_full()
-                    .cursor_pointer()
-                    .when(!self.rules.overridden.is_empty() || !self.rules.resolution.dropped.is_empty(), |b| {
-                        b.icon(IconName::TriangleAlert)
-                    })
-                    .tooltip(l.text(
-                        "Before/after rules from you and from mods; applied automatically and before launch",
-                        "Правила «перед/после» от вас и из модов; применяются автоматически и перед запуском",
-                    ))
-                    .on_click(cx.listener(|this, _, window, cx| this.open_rules(window, cx))),
-            )
-            .child(caption(l.text("PRESETS", "ПРЕСЕТЫ")))
-            .child(Input::new(&self.preset_name).small())
-            .child(
-                button("save-preset", l.text("Save preset", "Сохранить пресет"), available)
-                    .on_click(cx.listener(|this, _, _, cx| this.save_preset(cx))),
-            )
-            .child(
-                div()
-                    .flex()
-                    .gap_2()
-                    .child(button("import", l.text("Import", "Импорт"), available).on_click(cx.listener(|this, _, _, cx| this.import(cx))))
-                    .child(button("export", l.text("Export", "Экспорт"), available).on_click(cx.listener(|this, _, _, cx| this.export(cx)))),
-            )
+            .child(self.load_order_section(cx))
+            .child(self.presets_section(cx))
             .child(
                 div()
                     .relative()

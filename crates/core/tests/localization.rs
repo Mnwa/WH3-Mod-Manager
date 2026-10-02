@@ -1,18 +1,58 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-use wh3_core::{Error, localization::Language, metadata, preferences, preset::Preset};
+use wh3_core::{
+    Error,
+    localization::Language,
+    metadata,
+    preferences::{self, Column, Density, Layout, Preferences},
+    preset::Preset,
+};
 
 #[test]
-fn language_survives_restart_without_touching_the_library() {
+fn preferences_survive_restart_without_touching_the_library() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("preferences.whmp");
     let library = dir.path().join("library.whmm");
     std::fs::write(&library, b"unrelated library").unwrap();
-    assert_eq!(preferences::load(&path).unwrap(), Language::English);
-    for language in [Language::Russian, Language::English] {
-        preferences::save(&path, language).unwrap();
-        assert_eq!(preferences::load(&path).unwrap(), language);
-        assert_eq!(std::fs::read(&library).unwrap(), b"unrelated library");
-        assert_eq!(std::fs::metadata(&path).unwrap().len(), 5);
+    assert_eq!(preferences::load(&path).unwrap(), Preferences::default());
+    let mut prefs = Preferences::default();
+    prefs.language = Some(Language::Russian);
+    prefs.layout = Layout::Dual;
+    prefs.density = Density::Roomy;
+    prefs.group_by_category = true;
+    prefs.set_width(Column::Author, 9999.);
+    prefs.set_width(Column::Size, 1.);
+    preferences::save(&path, &prefs).unwrap();
+    let loaded = preferences::load(&path).unwrap();
+    assert_eq!(loaded, prefs);
+    assert_eq!(loaded.width(Column::Author), Column::MAX_WIDTH);
+    assert_eq!(loaded.width(Column::Size), Column::Size.min_width());
+    assert_eq!(std::fs::read(&library).unwrap(), b"unrelated library");
+    assert_eq!(std::fs::metadata(&path).unwrap().len(), 16);
+}
+
+#[test]
+fn whp1_language_files_migrate() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("preferences.whmp");
+    for (bytes, language) in [
+        (b"WHP1\x00", Language::English),
+        (b"WHP1\x01", Language::Russian),
+    ] {
+        std::fs::write(&path, bytes).unwrap();
+        let loaded = preferences::load(&path).unwrap();
+        assert_eq!(loaded.language, Some(language));
+        assert_eq!(loaded.layout, Layout::Single);
+        assert!(loaded.widths_are_default());
+    }
+}
+
+#[test]
+fn first_start_follows_the_system_language() {
+    for tag in ["ru", "ru-RU", "ru_BY", "RU-kz"] {
+        assert_eq!(Language::from_locale(tag), Language::Russian, "{tag}");
+    }
+    for tag in ["en-US", "uk-UA", "de", "rus", ""] {
+        assert_eq!(Language::from_locale(tag), Language::English, "{tag}");
     }
 }
 
@@ -20,11 +60,28 @@ fn language_survives_restart_without_touching_the_library() {
 fn invalid_preferences_are_reported_in_both_languages() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("preferences.whmp");
-    for bytes in [b"WHP1\x02".as_slice(), b"WHP2\x00", b"WHP1", b"WHP1\x00x"] {
+    let mut valid = Preferences::default().encode();
+    valid[5] = 7;
+    for bytes in [
+        b"WHP1\x02".as_slice(),
+        b"WHP2\x00",
+        b"WHP1",
+        b"WHP1\x00x",
+        &valid,
+        &Preferences::default().encode()[..15],
+    ] {
         std::fs::write(&path, bytes).unwrap();
         let message = preferences::load(&path).unwrap_err().message();
-        assert!(message.text(Language::English).contains("Invalid language"));
-        assert!(message.text(Language::Russian).contains("настройки языка"));
+        assert!(
+            message
+                .text(Language::English)
+                .contains("Invalid interface preferences")
+        );
+        assert!(
+            message
+                .text(Language::Russian)
+                .contains("настройки интерфейса")
+        );
     }
 }
 

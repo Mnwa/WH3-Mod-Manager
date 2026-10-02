@@ -5,7 +5,8 @@ use std::{path::PathBuf, sync::Arc};
 use wh3_core::{
     launch,
     saves::{self, Save},
-    storage::{self, GameOptions},
+    staging,
+    storage::{self, GameOptions, Staging},
 };
 
 /// Recent saves, refreshed after scans and launches rather than during render.
@@ -72,12 +73,33 @@ impl Manager {
         if !self.can_play() {
             return;
         }
+        if self.live.game_running {
+            self.status = wh3_core::message!(
+                "The game is already running; close it first",
+                "Игра уже запущена; сначала закройте её"
+            );
+            cx.notify();
+            return;
+        }
+        // Steam may be replacing a mod right now (it removes, then re-adds the file);
+        // launch once the folders are quiet and rescanned, like the original's delay.
+        if self.live.files_settling() {
+            self.live.play_after_refresh = Some(save);
+            self.status = wh3_core::message!(
+                "Mod files are changing; the game starts once they settle",
+                "Файлы модов меняются; игра запустится, когда они успокоятся"
+            );
+            cx.notify();
+            return;
+        }
         let Some(game) = self.settings.game_path.clone() else {
             return;
         };
         let snapshot = self.capture(LAST_LAUNCH.into());
         self.store_preset(snapshot);
-        self.dirty = true;
+        // Play saves first, so the list survives even if the manager is closed with the game.
+        self.settings.current = Some(self.capture("Current".into()));
+        let settings = self.settings.clone();
         let (catalog, order, enabled) = (
             self.catalog.clone(),
             self.order.clone(),
@@ -87,12 +109,33 @@ impl Manager {
         let close = self.settings.options.close_on_play;
         let rules = super::rules::Inputs::new(&self.settings, self.rules.pack_rules.clone());
         let pinned = self.rules.pinned.clone();
+        let (mode, fresh) = (
+            self.settings.options.staging,
+            self.settings.options.clean_up_staging,
+        );
+        let progress = Arc::new(staging::Progress::default());
         self.busy = true;
+        if mode != Staging::Off {
+            self.cancel
+                .store(false, std::sync::atomic::Ordering::Relaxed);
+            self.cancellable = true;
+            self.follow_staging(progress.clone(), cx);
+        }
+        let cancel = self.cancel.clone();
         let task = cx.background_spawn(async move {
             // Rules are applied again here so a pending debounced pass cannot be skipped.
+            storage::save(&storage::settings_path()?, &settings)?;
             let (_, applied) = rules.run(&catalog, &order, &enabled, &pinned);
             let temp = launch::temp_pack_dir()?;
-            launch::prepare(&game, &catalog, &applied.order, &enabled, &options, &temp)?;
+            let staged;
+            let catalog = if mode == Staging::Off {
+                &*catalog
+            } else {
+                staged =
+                    staging::stage(&game, &catalog, &enabled, mode, fresh, &cancel, &progress)?;
+                &staged
+            };
+            launch::prepare(&game, catalog, &applied.order, &enabled, &options, &temp)?;
             launch::start(&game, save.as_deref())?;
             Ok::<_, wh3_core::Error>(applied.order)
         });
@@ -100,12 +143,20 @@ impl Manager {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
                 this.busy = false;
+                this.cancellable = false;
+                this.live.staging_poll = None;
+                if mode != Staging::Off {
+                    this.refresh_staging_size(cx);
+                }
                 match result {
                     Ok(order) => {
+                        this.live.staged |= mode != Staging::Off;
+                        this.dirty = false;
                         if order.len() == this.order.len() && *this.order != order {
                             this.order = Arc::new(order);
                             this.rebuild_ranks();
                             this.refresh_query(cx);
+                            this.dirty = true;
                         }
                         this.status = wh3_core::message!(
                             "Launch command sent to the game",
@@ -115,7 +166,10 @@ impl Manager {
                             this.persist_then_quit(false, cx);
                         }
                     }
-                    Err(error) => this.status = error.message(),
+                    Err(error) => {
+                        this.dirty = true;
+                        this.status = error.message();
+                    }
                 }
                 cx.notify();
             });

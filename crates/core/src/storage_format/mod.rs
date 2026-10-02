@@ -5,6 +5,7 @@ mod records;
 mod v1;
 mod v2;
 mod v3;
+mod v4;
 
 use crate::{Error, Result, storage::Settings};
 use rkyv::rancor::Error as ArchiveError;
@@ -44,7 +45,7 @@ where
 }
 
 pub(crate) fn encode(settings: &Settings) -> Result<Vec<u8>> {
-    v3::encode(settings)
+    v4::encode(settings)
 }
 
 pub(crate) fn decode(bytes: &[u8]) -> Result<Settings> {
@@ -58,7 +59,9 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Settings> {
         return Err(invalid());
     }
     let magic = &bytes[..4];
-    if magic == v3::MAGIC {
+    if magic == v4::MAGIC {
+        v4::decode(payload)
+    } else if magic == v3::MAGIC {
         v3::decode(payload)
     } else if magic == v2::MAGIC {
         v2::decode(payload)

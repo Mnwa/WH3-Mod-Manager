@@ -17,6 +17,13 @@ rust-i18n = "4.2"
 
 [dev-dependencies]
 gpui-kit = { version = "0.7", features = ["test-support"] }
+# Renders assets/logo.svg into assets/app.ico (examples/render_icon.rs); GPUI already
+# depends on this version.
+resvg = { version = "0.46", default-features = false }
+
+[build-dependencies]
+# Already in the graph through GPUI's Windows manifest; compiles the icon and version info.
+embed-resource = "3"
 
 [lints]
 workspace = true

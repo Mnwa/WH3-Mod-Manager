@@ -24,6 +24,24 @@ impl Language {
             Self::Russian => Self::English,
         }
     }
+    /// The language for a BCP 47 tag such as `ru-RU`; anything else falls back to English.
+    pub fn from_locale(tag: &str) -> Self {
+        let primary = tag.split(['-', '_']).next().unwrap_or_default();
+        if primary.eq_ignore_ascii_case("ru") {
+            Self::Russian
+        } else {
+            Self::English
+        }
+    }
+    /// The operating system's display language, used until the user picks one.
+    pub fn system() -> Self {
+        sys_locale::get_locale().map_or_else(Self::default, |tag| Self::from_locale(&tag))
+    }
+    /// The language's name in that language, as language pickers show it.
+    pub fn native_name(self) -> &'static str {
+        self.text("English", "Русский")
+    }
+    pub const ALL: [Self; 2] = [Self::English, Self::Russian];
 }
 
 #[derive(Clone, Debug)]

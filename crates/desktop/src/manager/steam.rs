@@ -29,6 +29,10 @@ pub(crate) struct State {
     pub enable_after: HashSet<u64>,
     /// A collection whose preset is created after its items are installed.
     pub collection: Option<(String, Vec<u64>)>,
+    /// A shared mod list applied once its missing Workshop items are installed.
+    pub shared: Option<Vec<wh3_core::share::Shared>>,
+    /// Items being reinstalled, with whether they were enabled.
+    pub reinstall: HashMap<u64, bool>,
     pub busy: bool,
     pub task: Option<Task<()>>,
     pub poll: Option<Task<()>>,
@@ -145,6 +149,9 @@ impl Manager {
                 this.steam.busy = false;
                 match result {
                     Ok(Response::Done { accepted, failed }) => {
+                        for (id, _) in &failed {
+                            this.steam.reinstall.remove(id);
+                        }
                         this.diagnostics.extend(failed.iter().map(|(id, error)| {
                             message!("Workshop item {}: {}", "Мод Workshop {}: {}", id, error)
                         }));

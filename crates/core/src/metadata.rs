@@ -144,6 +144,15 @@ impl Bundle {
                     .unwrap_or_default(),
                 close_on_play: flag("isClosedOnPlay").unwrap_or_default(),
                 make_units_generals: flag("isMakeUnitsGeneralsEnabled").unwrap_or_default(),
+                raise_priority: flag("isChangingGameProcessPriority").unwrap_or_default(),
+                clean_up_staging: flag("cleanUpWorkshopModStagingAfterGameExit")
+                    .unwrap_or_default(),
+                // The original accepts only its three modes and treats anything else as off.
+                staging: match value.get("workshopModStagingMode").and_then(Value::as_str) {
+                    Some("copy") => crate::storage::Staging::Copy,
+                    Some("symlink") => crate::storage::Staging::Symlink,
+                    _ => crate::storage::Staging::Off,
+                },
             });
         let disabled_load_order_rules = strings("disabledModLoadOrderRules");
         let load_order_rule_disabled_packs = strings("loadOrderRuleDisabledPacks");

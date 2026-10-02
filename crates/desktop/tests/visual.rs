@@ -67,7 +67,7 @@ fn main() {
         cx.update_window(window.into(), |_, window, cx| {
             window.render_frame(cx);
             assert_eq!(window.find("all").label(), Some("All mods"));
-            window.click("language", cx);
+            window.click("language-ru", cx);
             assert_eq!(manager.read(cx).language(), Language::Russian);
             assert_eq!(window.find("all").label(), Some("Все моды"));
         })
@@ -77,7 +77,7 @@ fn main() {
             .save(dir.join(format!("mods-{count}-ru.png")))
             .unwrap();
         cx.update_window(window.into(), |_, window, cx| {
-            window.click("language", cx);
+            window.click("language-en", cx);
             assert_eq!(manager.read(cx).language(), Language::English);
             assert_eq!(window.find("all").label(), Some("All mods"));
             window.click(("check", 0usize), cx);

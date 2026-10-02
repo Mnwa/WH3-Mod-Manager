@@ -1,105 +1,100 @@
 //! Search bar, column header and the virtualized mod table.
-use super::{
-    Manager,
-    view::{button, vertical_scrollbar},
-};
+use super::{Manager, SortKey, view::button};
 use crate::theme;
 use gpui_kit::{
     assets::IconName,
-    component::{Sizable, input::Input},
+    component::{Icon, Sizable, button::Button, input::Input},
     prelude::*,
     *,
 };
 
 impl Manager {
-    fn search_bar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn sort_name(&self) -> &'static str {
+        let l = self.language;
+        match self.sort.key {
+            SortKey::Order => l.text("load order", "порядку загрузки"),
+            SortKey::Enabled => l.text("enabled state", "включённости"),
+            SortKey::Title => l.text("title", "названию"),
+            SortKey::Pack => l.text("pack", "pack"),
+            SortKey::Author => l.text("author", "автору"),
+            SortKey::Updated => l.text("update date", "дате обновления"),
+            SortKey::Size => l.text("size", "размеру"),
+        }
+    }
+
+    /// Sorting by a column hides the real load order, so say so and offer the way back.
+    fn sorted_notice(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let l = self.language;
         div()
             .flex()
             .items_center()
             .gap_2()
-            .p_3()
-            .child(div().flex_1().child(Input::new(&self.search).small()))
-            .when(!self.sort.is_load_order(), |bar| {
-                bar.child(
-                    div()
-                        .text_xs()
-                        .text_color(theme::warning())
-                        .child(l.text("Sorted view · drag disabled", "Сортировка · перетаскивание выключено")),
-                )
-            })
+            .text_xs()
+            .text_color(theme::warning())
+            .child(crate::ui_text!(
+                l,
+                "Sorted by {}: dragging is off",
+                "Сортировка по {}: перетаскивание выключено",
+                self.sort_name()
+            ))
             .child(
-                button("check", l.text("Check compatibility", "Проверить совместимость"), !self.busy && !self.demo)
-                    .icon(IconName::ShieldAlert)
-                    .tooltip(l.text(
-                        "Find overwritten files, shared DB tables, missing dependencies and startpos conflicts among enabled mods",
-                        "Найти перезаписанные файлы, общие DB-таблицы, отсутствующие зависимости и конфликты startpos у включённых модов",
-                    ))
-                    .on_click(cx.listener(|this, _, _, cx| this.check(cx))),
+                Button::new("sort-reset")
+                    .label(l.text("Show load order", "Показать порядок загрузки"))
+                    .xsmall()
+                    .outline()
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| this.reset_sort(cx))),
             )
     }
 
-    fn empty_state(&self) -> AnyElement {
+    fn search_bar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let l = self.language;
         div()
-            .flex_1()
             .flex()
-            .flex_col()
             .items_center()
-            .justify_center()
             .gap_3()
-            .child(if self.busy {
-                self.language
-                    .text("Loading library…", "Загрузка библиотеки…")
-            } else {
-                self.language.text("No mods found", "Моды не найдены")
-            })
+            .p_3()
             .child(
-                div()
-                    .text_sm()
-                    .text_color(theme::muted())
-                    .child(self.language.text(
-                        "Select the game folder or add a folder containing .pack files.",
-                        "Выберите папку игры или добавьте папку с .pack файлами.",
-                    )),
+                div().flex_1().min_w_0().child(
+                    Input::new(&self.search)
+                        .small()
+                        .cleanable(true)
+                        .prefix(Icon::new(IconName::Search).small().text_color(theme::muted())),
+                ),
             )
-            .into_any_element()
-    }
-
-    fn table(&self, cx: &mut Context<Self>) -> AnyElement {
-        div()
-            .relative()
-            .flex_1()
-            .min_h_0()
+            .when(!self.sort.is_load_order(), |bar| bar.child(self.sorted_notice(cx)))
+            .child(self.view_menu(cx))
             .child(
-                uniform_list(
-                    "mods",
-                    self.visible.len(),
-                    cx.processor(|this, range: std::ops::Range<usize>, _, cx| {
-                        this.rendered_rows += range.len();
-                        range.map(|position| this.row(position, cx)).collect()
-                    }),
+                button(
+                    "check",
+                    l.text("Check compatibility", "Проверить совместимость"),
+                    !self.busy && !self.demo,
                 )
-                .track_scroll(&self.scroll)
-                .size_full(),
+                .icon(IconName::ShieldAlert)
+                .tooltip(l.text(
+                    "Find enabled mods that overwrite each other, miss a requirement or both change the campaign start",
+                    "Найти включённые моды, которые перекрывают друг друга, требуют отсутствующий мод или вместе меняют старт кампании",
+                ))
+                .on_click(cx.listener(|this, _, _, cx| this.check(cx))),
             )
-            .child(vertical_scrollbar(&self.scroll))
-            .into_any_element()
     }
 
     pub(super) fn workspace(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let first_start = self.catalog.mods.is_empty();
         div()
             .flex()
             .flex_col()
             .flex_1()
             .min_w_0()
             .min_h_0()
-            .child(self.search_bar(cx))
-            .child(self.header(cx))
-            .child(if self.visible.is_empty() {
-                self.empty_state()
-            } else {
-                self.table(cx)
+            .when(!first_start, |workspace| {
+                workspace
+                    .child(self.search_bar(cx))
+                    .children(self.hunt_banner(cx))
             })
-            .child(self.selection_bar(cx))
+            .child(self.lists(cx))
+            .when(!first_start, |workspace| {
+                workspace.child(self.selection_bar(cx))
+            })
     }
 }
