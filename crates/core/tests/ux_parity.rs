@@ -151,14 +151,49 @@ fn watcher_reports_a_new_pack_and_save() {
     let watcher = watch::watch(&[(mods.clone(), Source::Custom)], Some(&saves)).unwrap();
     std::fs::write(mods.join("item").join("new.pack"), b"pack").unwrap();
     std::fs::write(saves.join("turn 1.save"), b"save").unwrap();
+    wait_for_changes(&watcher.signals);
+}
+
+#[cfg(unix)]
+#[test]
+fn watcher_reports_created_and_removed_files_through_symlinked_folders() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let (mods, saves) = (root.join("mods"), root.join("saves"));
+    std::fs::create_dir_all(mods.join("item")).unwrap();
+    std::fs::create_dir_all(&saves).unwrap();
+    let alias = root.join("alias");
+    std::os::unix::fs::symlink(&root, &alias).unwrap();
+    let watcher = watch::watch(
+        &[(alias.join("mods"), Source::Custom)],
+        Some(&alias.join("saves")),
+    )
+    .unwrap();
+    let pack = mods.join("item/new.pack");
+    let save = saves.join("turn 1.save");
+    std::fs::write(&pack, b"pack").unwrap();
+    std::fs::write(&save, b"save").unwrap();
+    wait_for_changes(&watcher.signals);
+
+    // A separate watcher prevents queued creation events from satisfying deletion.
+    drop(watcher);
+    let watcher = watch::watch(
+        &[(alias.join("mods"), Source::Custom)],
+        Some(&alias.join("saves")),
+    )
+    .unwrap();
+    std::fs::remove_file(pack).unwrap();
+    std::fs::remove_file(save).unwrap();
+    wait_for_changes(&watcher.signals);
+}
+
+fn wait_for_changes(signals: &watch::Signals) {
     let deadline = Instant::now() + Duration::from_secs(5);
-    while (watcher.signals.packs() == 0 || watcher.signals.saves() == 0)
-        && Instant::now() < deadline
-    {
+    while (signals.packs() == 0 || signals.saves() == 0) && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(20));
     }
-    assert!(watcher.signals.packs() > 0);
-    assert!(watcher.signals.saves() > 0);
+    assert!(signals.packs() > 0, "no pack change event received");
+    assert!(signals.saves() > 0, "no save change event received");
 }
 
 #[test]

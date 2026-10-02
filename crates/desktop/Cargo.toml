@@ -11,7 +11,7 @@ publish = false
 wh3-core = { path = "../core", features = ["steam"] }
 gpui-kit = "0.7"
 # Global allocator for the GUI binary; the core library stays allocator-agnostic.
-mimalloc3 = { version = "0.1", features = ["secure"] }
+mimalloc3 = "0.1"
 serde_json.workspace = true
 rust-i18n = "4.2"
 
@@ -19,7 +19,7 @@ rust-i18n = "4.2"
 gpui-kit = { version = "0.7", features = ["test-support"] }
 # Renders assets/logo.svg into assets/app.ico (examples/render_icon.rs); GPUI already
 # depends on this version.
-resvg = { version = "0.46", default-features = false }
+resvg = { version = "0.48", default-features = false }
 
 [build-dependencies]
 # Already in the graph through GPUI's Windows manifest; compiles the icon and version info.

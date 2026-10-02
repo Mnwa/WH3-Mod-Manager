@@ -18,8 +18,8 @@ crc32fast = "1"
 regex = "1"
 # Picks the initial UI language from the OS; GPUI already depends on it.
 sys-locale = "0.3"
-# Follows Workshop downloads and new saves; GPUI already depends on this version.
-notify = "7"
+# Follows Workshop downloads and new saves.
+notify = "8"
 # Pure-Rust decoders for compressed PFH5 entries: Zstandard (also used for the embedded DB
 # schema), LZ4 frames and CA's legacy LZMA1 layout.
 ruzstd = "0.9"

@@ -83,8 +83,19 @@ pub fn classify(
 /// Folders that do not exist are skipped; the next scan reports them.
 pub fn watch(roots: &[(PathBuf, Source)], saves: Option<&Path>) -> Result<Watcher> {
     let signals = Arc::new(Signals::default());
-    let folders: Vec<PathBuf> = roots.iter().map(|(root, _)| root.clone()).collect();
-    let saves_folder = saves.map(Path::to_path_buf);
+    // FSEvents reports canonical paths, including /private/var for /var on macOS.
+    // Resolve roots once for both registration and classification; event paths may
+    // already have been deleted and cannot safely be canonicalized in the callback.
+    let folders: Vec<PathBuf> = roots
+        .iter()
+        .map(|(root, _)| root.as_path())
+        .filter(|folder| folder.is_dir())
+        .map(canonical_folder)
+        .collect::<Result<_>>()?;
+    let saves_folder = saves
+        .filter(|folder| folder.is_dir())
+        .map(canonical_folder)
+        .transpose()?;
     let sink = signals.clone();
     let (watched, saves_watched) = (folders.clone(), saves_folder.clone());
     let mut inner = notify::recommended_watcher(move |event: notify::Result<Event>| {
@@ -98,12 +109,12 @@ pub fn watch(roots: &[(PathBuf, Source)], saves: Option<&Path>) -> Result<Watche
         }
     })
     .map_err(watch_error)?;
-    for folder in folders.iter().filter(|folder| folder.is_dir()) {
+    for folder in &folders {
         inner
             .watch(folder, RecursiveMode::Recursive)
             .map_err(watch_error)?;
     }
-    if let Some(saves) = saves_folder.as_deref().filter(|folder| folder.is_dir()) {
+    if let Some(saves) = saves_folder.as_deref() {
         inner
             .watch(saves, RecursiveMode::NonRecursive)
             .map_err(watch_error)?;
@@ -112,6 +123,12 @@ pub fn watch(roots: &[(PathBuf, Source)], saves: Option<&Path>) -> Result<Watche
         _inner: inner,
         signals,
     })
+}
+
+fn canonical_folder(folder: &Path) -> Result<PathBuf> {
+    folder
+        .canonicalize()
+        .map_err(|error| watch_error(notify::Error::from(error).add_path(folder.to_path_buf())))
 }
 
 fn watch_error(error: notify::Error) -> Error {
