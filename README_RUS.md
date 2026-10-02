@@ -22,6 +22,7 @@
 
 <p align="center">
   <a href="https://github.com/Mnwa/WH3-Mod-Manager/releases/latest"><b>Скачать для Windows</b></a>
+<br>Скачивайте <b>WH3-Mod-Manager-v0.3.0-windows-x64.zip</b> файл
 </p>
 
 ![Список модов: включённые моды с латунными галочками, превью, авторы, даты обновления и значки конфликтов](docs/screenshot-ru.png)
