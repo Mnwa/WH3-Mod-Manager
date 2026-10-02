@@ -39,7 +39,7 @@ impl Manager {
             tabs.push((
                 Tab::Details,
                 "report-pack",
-                l.text("Pack files", "Файлы pack"),
+                l.text("Files inside", "Файлы внутри"),
                 self.details.len(),
             ));
         }
@@ -60,24 +60,59 @@ impl Manager {
                 (
                     Tab::Keys,
                     "report-keys",
-                    l.text("DB keys", "DB-ключи"),
+                    l.text("Overridden DB rows", "Перекрытые DB-строки"),
                     sections.keys.len(),
                 ),
                 (
                     Tab::Dependencies,
                     "report-deps",
-                    l.text("Dependencies", "Зависимости"),
+                    l.text("Missing requirements", "Не хватает модов"),
                     sections.dependencies.len(),
                 ),
                 (
                     Tab::Startpos,
                     "report-startpos",
-                    "Startpos",
+                    l.text("Start position", "Стартовая позиция"),
                     sections.startpos.len(),
                 ),
             ]);
         }
         tabs
+    }
+
+    /// One sentence per tab, so the report can be read without knowing modding terms.
+    fn report_explanation(&self) -> &'static str {
+        let l = self.language;
+        match self.report_tab {
+            Tab::Diagnostics => l.text(
+                "Warnings from scanning, presets, saves and Steam.",
+                "Предупреждения от сканирования, пресетов, сохранений и Steam.",
+            ),
+            Tab::Details => l.text(
+                "Files packed in the selected mod.",
+                "Файлы, упакованные в выбранный мод.",
+            ),
+            Tab::Files => l.text(
+                "Several mods contain the same file; the one higher in the load order wins. Often intended, e.g. for patches.",
+                "Один и тот же файл есть в нескольких модах; побеждает мод выше в порядке загрузки. Часто так и задумано, например у патчей.",
+            ),
+            Tab::Tables => l.text(
+                "Several mods edit the same database table. Only rows with the same key collide.",
+                "Несколько модов меняют одну таблицу базы данных. Конфликтуют только строки с одинаковым ключом.",
+            ),
+            Tab::Keys => l.text(
+                "Rows with the same key: the game keeps the row of the mod higher in the load order.",
+                "Строки с одинаковым ключом: игра берёт строку мода, который выше в порядке загрузки.",
+            ),
+            Tab::Dependencies => l.text(
+                "These mods need another mod that is disabled or not installed. Get required mods fixes Workshop ones.",
+                "Этим модам нужен другой мод, который отключён или не установлен. «Установить нужные моды» исправит моды из Workshop.",
+            ),
+            Tab::Startpos => l.text(
+                "These mods replace the campaign start position. Two of them together usually break a new campaign.",
+                "Эти моды заменяют стартовую позицию кампании. Два таких мода вместе обычно ломают новую кампанию.",
+            ),
+        }
     }
 
     pub(super) fn show_report_tab(&mut self, tab: Tab, cx: &mut Context<Self>) {
@@ -90,10 +125,11 @@ impl Manager {
         let tabs = self.report_tabs();
         let count = self.report_lines().len();
         div()
-            .h(px(200.))
+            .h(px(220.))
             .flex_shrink_0()
             .flex()
             .flex_col()
+            .bg(theme::panel())
             .border_t_1()
             .border_color(theme::border())
             .child(
@@ -105,7 +141,7 @@ impl Manager {
                     .py_1()
                     .children(tabs.into_iter().map(|(tab, id, label, n)| {
                         Button::new(id)
-                            .label(format!("{label} · {n}"))
+                            .label(format!("{label} ({n})"))
                             .xsmall()
                             .ghost()
                             .cursor_pointer()
@@ -146,6 +182,19 @@ impl Manager {
                                 cx.notify();
                             })),
                     ),
+            )
+            .child(
+                div()
+                    .px_3()
+                    .pb_1()
+                    .text_xs()
+                    .text_color(theme::muted())
+                    .truncate()
+                    .child(if count == 0 {
+                        self.language.text("Nothing to report here.", "Здесь пока пусто.")
+                    } else {
+                        self.report_explanation()
+                    }),
             )
             .child(
                 div()

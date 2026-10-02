@@ -28,6 +28,9 @@ impl Manager {
         // Rows index the catalog directly; until the debounced query finishes,
         // show the new order so no stale index from a previous catalog survives.
         self.visible = self.order.to_vec();
+        self.visible_enabled.clear();
+        self.groups = Default::default();
+        self.grouped.clear();
         self.rebuild_ranks();
         self.enabled = applied.enabled;
         self.enforce_always_enabled();

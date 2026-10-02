@@ -25,7 +25,11 @@ impl Manager {
     /// visible rows change only when enabled state filters or sorts them.
     pub(super) fn refresh_if_enabled_matters(&mut self, cx: &mut Context<Self>) {
         self.apply_rules(cx);
-        if self.filter != Filter::All || self.sort.key == super::SortKey::Enabled {
+        if self.filter != Filter::All
+            || self.sort.key == super::SortKey::Enabled
+            || self.dual_active()
+            || self.grouping_active()
+        {
             self.refresh_query(cx);
         }
     }
@@ -154,7 +158,7 @@ impl Manager {
         if self.busy {
             return;
         }
-        let indices = self.visible.clone();
+        let indices: Vec<usize> = self.shown().collect();
         let mut selected = self.enabled.clone();
         let always = self.always_enabled_indices();
         self.busy = true;

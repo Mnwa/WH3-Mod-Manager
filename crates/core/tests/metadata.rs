@@ -65,7 +65,7 @@ fn binary_library_roundtrips_metadata_and_keeps_previous_generation() {
     };
     storage::save(&path, &settings).unwrap();
     let original = fs::read(&path).unwrap();
-    assert!(original.starts_with(b"WHM3"));
+    assert!(original.starts_with(b"WHM4"));
     let decoded = storage::load(&path).unwrap();
     assert_eq!(decoded.metadata["a.pack"].human_name, "Кислев");
     assert_eq!(decoded.game_path, settings.game_path);
@@ -109,7 +109,7 @@ fn frozen_v1_fixture_migrates_to_current_without_losing_state() {
     assert_eq!(settings.options, storage::GameOptions::default());
     // Saving migrates in place and keeps the WHM1 generation as the backup.
     storage::save(&path, &settings).unwrap();
-    assert!(fs::read(&path).unwrap().starts_with(b"WHM3"));
+    assert!(fs::read(&path).unwrap().starts_with(b"WHM4"));
     assert_eq!(fs::read(path.with_extension("whmm.bak")).unwrap(), fixture);
     let migrated = storage::load(&path).unwrap();
     assert_eq!(migrated.game_path, settings.game_path);
@@ -131,6 +131,7 @@ fn v2_state() -> storage::Settings {
         auto_start_custom_battle: true,
         close_on_play: true,
         make_units_generals: false,
+        ..Default::default()
     };
     settings
 }
@@ -148,7 +149,7 @@ fn frozen_v2_fixture_migrates_to_current_without_losing_state() {
     assert_eq!(settings.options, expected.options);
     assert!(settings.rules.is_empty() && settings.disabled_rules.is_empty());
     storage::save(&path, &settings).unwrap();
-    assert!(fs::read(&path).unwrap().starts_with(b"WHM3"));
+    assert!(fs::read(&path).unwrap().starts_with(b"WHM4"));
     assert_eq!(fs::read(path.with_extension("whmm.bak")).unwrap(), fixture);
     assert_eq!(storage::load(&path).unwrap().hidden, expected.hidden);
 }
@@ -167,7 +168,7 @@ fn v3_state() -> storage::Settings {
 }
 
 #[test]
-fn binary_schema_matches_frozen_v3_fixture() {
+fn frozen_v3_fixture_migrates_to_current_without_losing_state() {
     let temp = tempfile::tempdir().unwrap();
     let fixture = include_bytes!("fixtures/state-v3.whmm");
     let path = temp.path().join("library.whmm");
@@ -178,9 +179,44 @@ fn binary_schema_matches_frozen_v3_fixture() {
     assert_eq!(settings.disabled_rules, expected.disabled_rules);
     assert_eq!(settings.disabled_rule_packs, expected.disabled_rule_packs);
     assert_eq!(settings.hidden, expected.hidden);
+    assert_eq!(settings.options, expected.options);
+    storage::save(&path, &settings).unwrap();
+    assert!(fs::read(&path).unwrap().starts_with(b"WHM4"));
+    assert_eq!(fs::read(path.with_extension("whmm.bak")).unwrap(), fixture);
+}
+
+fn v4_state() -> storage::Settings {
+    let mut settings = v3_state();
+    settings.options.raise_priority = true;
+    settings.options.clean_up_staging = true;
+    settings.options.staging = storage::Staging::Symlink;
+    settings
+}
+
+#[test]
+fn binary_schema_matches_frozen_v4_fixture() {
+    let temp = tempfile::tempdir().unwrap();
+    let fixture = include_bytes!("fixtures/state-v4.whmm");
+    let path = temp.path().join("library.whmm");
+    fs::write(&path, fixture).unwrap();
+    let settings = storage::load(&path).unwrap();
+    let expected = v4_state();
+    assert_eq!(settings.options, expected.options);
+    assert_eq!(settings.rules, expected.rules);
     let new_path = temp.path().join("roundtrip.whmm");
     storage::save(&new_path, &expected).unwrap();
     assert_eq!(fs::read(new_path).unwrap(), fixture);
+}
+
+#[test]
+fn legacy_records_reject_option_bits_they_never_had() {
+    let mut bytes = include_bytes!("fixtures/state-v4.whmm").to_vec();
+    bytes[..4].copy_from_slice(b"WHM3");
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("library.whmm");
+    fs::write(&path, &bytes).unwrap();
+    // A WHM4 payload relabelled as WHM3 fails validation instead of losing the new options.
+    assert!(storage::load(&path).is_err());
 }
 
 #[test]

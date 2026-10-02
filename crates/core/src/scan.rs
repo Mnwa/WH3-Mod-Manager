@@ -99,7 +99,14 @@ pub fn scan(roots: &[(PathBuf, Source)], cancelled: &AtomicBool) -> Result<Scan>
             }
         }
     }
-    mods.sort_by(|a, b| a.name.cmp(&b.name).then(a.path.cmp(&b.path)));
+    // A copy or link in `data` shadows the Workshop pack of the same name, as in the
+    // original, so presets that bind by name pick it first.
+    mods.sort_by(|a, b| {
+        a.name
+            .cmp(&b.name)
+            .then((a.source != Source::Data).cmp(&(b.source != Source::Data)))
+            .then(a.path.cmp(&b.path))
+    });
     let mut catalog = Catalog::new(mods);
     thumbnail::inherit(&mut catalog);
     Ok(Scan { catalog, warnings })
@@ -132,6 +139,7 @@ fn read_mod(path: &Path, source: Source) -> Result<Option<Mod>> {
     let modified = fs::metadata(path)
         .and_then(|metadata| metadata.modified())
         .ok();
+    let linked = fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink());
     Ok(Some(
         Mod::new(
             path.to_owned(),
@@ -142,6 +150,7 @@ fn read_mod(path: &Path, source: Source) -> Result<Option<Mod>> {
             kind == 4,
             header.dependencies,
         )
-        .with_modified(modified),
+        .with_modified(modified)
+        .with_link(linked),
     ))
 }

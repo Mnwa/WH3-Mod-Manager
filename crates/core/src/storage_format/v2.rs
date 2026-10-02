@@ -42,7 +42,7 @@ pub(super) fn decode(payload: &[u8]) -> Result<Settings> {
             .iter()
             .map(|s| s.to_string())
             .collect(),
-        options: GameOptions::from_bits(record.options.to_native()).ok_or_else(invalid)?,
+        options: GameOptions::from_legacy_bits(record.options.to_native()).ok_or_else(invalid)?,
         ..Settings::default()
     })
 }

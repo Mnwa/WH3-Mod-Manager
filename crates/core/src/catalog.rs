@@ -32,6 +32,8 @@ pub struct Mod {
     pub modified: Option<SystemTime>,
     /// Preview image path discovered during scanning. The core never reads image bytes.
     pub thumbnail: Option<PathBuf>,
+    /// The pack is a symbolic link (e.g. linked into `data` from the Workshop).
+    pub linked: bool,
     // Normalize during scanning instead of on every search keystroke.
     search: String,
 }
@@ -66,7 +68,13 @@ impl Mod {
             metadata: Default::default(),
             modified: None,
             thumbnail: None,
+            linked: false,
         }
+    }
+
+    pub fn with_link(mut self, linked: bool) -> Self {
+        self.linked = linked;
+        self
     }
 
     /// Builder-style setter so existing `Mod::new` call sites stay unchanged.

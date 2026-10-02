@@ -1,6 +1,9 @@
 use super::Manager;
 use gpui_kit::*;
-use wh3_core::{localization::Language, preferences};
+use wh3_core::{
+    localization::Language,
+    preferences::{self, Preferences},
+};
 
 impl Manager {
     pub fn language(&self) -> Language {
@@ -13,15 +16,19 @@ impl Manager {
         self.search.update(cx, |input, cx| {
             input.set_placeholder(
                 language.text(
-                    "Search by name, pack or Workshop ID…",
-                    "Поиск по названию, pack или Workshop ID…",
+                    "Search by title, author, pack or Workshop ID (Ctrl+F)",
+                    "Поиск по названию, автору, pack или Workshop ID (Ctrl+F)",
                 ),
                 window,
                 cx,
             );
         });
         self.preset_name.update(cx, |input, cx| {
-            input.set_placeholder(language.text("Preset name", "Название пресета"), window, cx);
+            input.set_placeholder(
+                language.text("New preset name", "Название нового пресета"),
+                window,
+                cx,
+            );
         });
         cx.notify();
     }
@@ -40,7 +47,13 @@ impl Manager {
                 let _ = this.update(cx, |this, cx| {
                     this.preferences_busy = false;
                     match result {
-                        Ok(language) => this.apply_language(language, window, cx),
+                        Ok(prefs) => {
+                            this.prefs = prefs;
+                            // Until the user picks a language, follow the system one.
+                            let language = prefs.language.unwrap_or_else(Language::system);
+                            this.apply_language(language, window, cx);
+                            this.refresh_query(cx);
+                        }
                         Err(error) => {
                             this.diagnostics.push(error.message());
                             this.show_report = true;
@@ -52,27 +65,52 @@ impl Manager {
         }));
     }
 
-    pub(super) fn change_language(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.preferences_busy {
+    pub(super) fn set_language(
+        &mut self,
+        language: Language,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.preferences_busy || language == self.language {
             return;
         }
-        let language = self.language.other();
         self.apply_language(language, window, cx);
-        if self.demo {
+        self.update_prefs(|prefs| prefs.language = Some(language), cx);
+    }
+
+    /// Change a view preference; the list is refreshed and the file saved shortly after,
+    /// so dragging a column edge writes once instead of on every frame.
+    pub(super) fn update_prefs(
+        &mut self,
+        change: impl FnOnce(&mut Preferences),
+        cx: &mut Context<Self>,
+    ) {
+        let before = self.prefs;
+        change(&mut self.prefs);
+        if before.layout != self.prefs.layout
+            || before.group_by_category != self.prefs.group_by_category
+        {
+            self.refresh_query(cx);
+        }
+        cx.notify();
+        if self.demo || before == self.prefs {
             return;
         }
-        self.preferences_busy = true;
-        let task =
-            cx.background_spawn(async move { preferences::save(&preferences::path()?, language) });
-        self.preferences_task = Some(cx.spawn(async move |this, cx| {
-            let result = task.await;
-            let _ = this.update(cx, |this, cx| {
-                this.preferences_busy = false;
-                if let Err(error) = result {
+        let executor = cx.background_executor().clone();
+        self.preferences_save = Some(cx.spawn(async move |this, cx| {
+            executor.timer(std::time::Duration::from_millis(400)).await;
+            let Ok(prefs) = this.update(cx, |this, _| this.prefs) else {
+                return;
+            };
+            let result = executor
+                .spawn(async move { preferences::save(&preferences::path()?, &prefs) })
+                .await;
+            if let Err(error) = result {
+                let _ = this.update(cx, |this, cx| {
                     this.status = error.message();
-                }
-                cx.notify();
-            });
+                    cx.notify();
+                });
+            }
         }));
     }
 }
