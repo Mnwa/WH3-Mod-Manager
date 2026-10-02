@@ -30,6 +30,9 @@ workspace. Chat-specific API contracts and medical-data rules do not apply here.
   titles, paths, user preset names or imported user content.
 - Preserve the original Shazbot copyright notice and the 2026 Mikhail Panfilov
   (Mnwa) notice. Workspace package authorship is inherited by both crates.
+- Add an English Sampo changeset for user-visible changes; follow `.sampo/README.md`.
+  Keep both packages in the fixed version group. Sampo prepares release PRs only;
+  Windows assets are built from an existing published GitHub Release.
 - Record functionality changes and remaining differences in `docs/MIGRATION.md`.
   Do not describe a preserved-but-unapplied feature as implemented.
 

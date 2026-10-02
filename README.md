@@ -83,11 +83,20 @@ There are two GitHub Actions workflows:
 
 - `ci.yml` runs on pushes to `main` and pull requests targeting `main`. It checks
   formatting, Clippy, tests, release-version handling and performance/visual results
-  on Linux, Windows and macOS. It does not package application releases.
+  on Linux, Windows and macOS. After successful pushes, Sampo prepares a draft release
+  PR with synchronized versions and package changelogs. CI does not package application releases.
 - `release.yml` runs when a GitHub Release is published. It reads that existing
   release, checks out its exact tag and builds the Windows x64 executables with the
   latest stable Rust. Package versions come from the SemVer tag (for example
   `v0.1.0`); dependency versions remain locked.
+
+## Release preparation
+
+Add user-visible changes as English [Sampo changesets](.sampo/README.md). CI validates
+the release plan; successful pushes to `main` create or refresh a draft release PR
+with versions and changelogs. Mark it Ready for review to run CI, then merge it before
+publishing the matching GitHub Release. See the [desktop changelog](crates/desktop/CHANGELOG.md)
+and [core changelog](crates/core/CHANGELOG.md).
 
 ## Publishing a release
 

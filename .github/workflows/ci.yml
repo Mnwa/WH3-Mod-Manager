@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
@@ -23,9 +24,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Install latest stable Rust
         run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Validate Sampo release plan
+        uses: bruits/sampo/crates/sampo-github-action@main
+        with:
+          command: release
+          dry-run: true
+        env:
+          SAMPO_RELEASE_BRANCH: main
+          GITHUB_TOKEN: ${{ github.token }}
       - name: Test release versioning
         run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
       - run: cargo fmt --all --check
@@ -68,3 +79,56 @@ jobs:
           name: visual-macos
           path: target/visual/*.png
           if-no-files-found: warn
+
+  prepare-release:
+    name: Prepare release PR and changelogs
+    needs: [core, windows, visual]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+      - name: Install latest stable Rust
+        run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@v2
+      - name: Prepare versions and changelogs with Sampo
+        uses: bruits/sampo/crates/sampo-github-action@main
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Preserve dependency versions
+        shell: bash
+        run: |
+          git show HEAD:Cargo.lock > Cargo.lock
+          export RELEASE_TAG="v$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')"
+          python3 .github/scripts/set-release-version.py
+          cargo metadata --locked --no-deps --format-version 1 > /dev/null
+      - name: Create or update draft release PR
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ github.token }}
+          branch: release/main
+          base: main
+          title: 'Prepare release: versions and changelogs'
+          commit-message: 'chore(release): update versions and changelogs'
+          draft: always-true
+          add-paths: |
+            Cargo.toml
+            Cargo.lock
+            crates/*/Cargo.toml
+            crates/*/CHANGELOG.md
+            .sampo/changesets
+          body: |
+            Prepared by Sampo from the changesets merged into main.
+
+            Review the package changelogs, then mark this PR Ready for review to
+            run CI on the generated commit. Automatic updates return it to draft.
+            After merging, publish a GitHub Release using the matching workspace
+            version tag and the desktop changelog notes. release.yml will attach
+            the Windows executables to that existing release.

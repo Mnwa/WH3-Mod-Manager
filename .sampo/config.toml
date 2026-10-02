@@ -1,0 +1,18 @@
+[git]
+default_branch = "main"
+short_tags = "wh3-mod-manager"
+short_tags_format = "v{version}"
+
+[github]
+repository = "Mnwa/WH3-Mod-Manager"
+
+[changesets]
+tags = ["Added", "Changed", "Fixed", "Removed", "Security"]
+
+[changelog]
+show_commit_hash = true
+show_acknowledgments = false
+
+[packages]
+ignore_unpublished = false
+fixed = [["cargo/wh3-core", "cargo/wh3-mod-manager"]]
