@@ -15,7 +15,7 @@ use gpui_kit::{
 use wh3_core::{message, share, workshop::Request};
 
 /// Snapshot of the list before a shared one replaces it, so nothing is lost.
-const BEFORE_SHARED: &str = "Before shared list";
+pub(super) const BEFORE_SHARED: &str = "Before shared list";
 
 impl Manager {
     fn copy_shared_list(&mut self, cx: &mut Context<Self>) {

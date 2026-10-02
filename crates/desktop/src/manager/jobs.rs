@@ -1,4 +1,4 @@
-use super::{Filter, Manager, Sort, SortKey};
+use super::{Filter, Manager, Sort, SortKey, presets::APP_START};
 use crate::update::{Updater, UpdaterEvent};
 use gpui_kit::{
     component::input::{InputEvent, InputState},
@@ -128,6 +128,9 @@ impl Manager {
                     Ok((settings, scan)) => {
                         this.settings = settings;
                         this.apply_scan(scan, cx);
+                        // Kept like the original's "On App Start" so a session can be undone.
+                        let snapshot = this.capture(APP_START.into());
+                        this.store_preset(snapshot);
                         this.dirty = false;
                         this.refresh_saves(cx);
                     }
@@ -142,7 +145,8 @@ impl Manager {
     }
 
     pub(super) fn apply_scan(&mut self, scan: scan::Scan, cx: &mut Context<Self>) {
-        self.catalog = Arc::new(scan.catalog);
+        let previous = std::mem::replace(&mut self.catalog, Arc::new(scan.catalog));
+        self.remap_hunt(&previous);
         self.selected = None;
         self.marked.clear();
         self.anchor = None;

@@ -72,8 +72,25 @@ fn shared_lists_from_the_original_keep_pins_and_report_what_is_missing() {
     assert!(share::parse("  ").is_empty());
 }
 
+/// Runs a search where the problem appears whenever `culprit` is enabled.
+fn hunt(catalog: &Catalog, suspects: &[usize], culprit: usize) -> Search {
+    let requirements = bisect::requirements(catalog, suspects);
+    let mut search = Search::start(catalog, suspects.to_vec()).unwrap();
+    let mut steps = 1;
+    loop {
+        // A test never runs a mod without what it requires.
+        let enabled: HashSet<usize> = search.enabled.iter().copied().collect();
+        assert_eq!(bisect::closure(&requirements, enabled.clone()), enabled);
+        if !search.answer(enabled.contains(&culprit)) {
+            return search;
+        }
+        steps += 1;
+        assert!(steps <= suspects.len(), "the search must converge");
+    }
+}
+
 #[test]
-fn bisecting_keeps_requirements_together_and_finds_the_culprit() {
+fn bisecting_brings_requirements_along_and_finds_the_culprit() {
     let mut mods: Vec<Mod> = (0..9)
         .map(|i| {
             item(
@@ -89,25 +106,85 @@ fn bisecting_keeps_requirements_together_and_finds_the_culprit() {
     mods[4].metadata.req_mod_id_to_name = vec![("105".into(), "m5".into())];
     let catalog = Catalog::new(mods);
     let suspects: Vec<usize> = (0..9).collect();
-    let groups = bisect::groups(&catalog, &suspects);
-    assert!(groups.contains(&vec![1, 7]));
-    assert!(groups.contains(&vec![4, 5]));
-    let (first, rest) = bisect::split(&groups).unwrap();
-    assert_eq!(first.len() + rest.len(), 9);
-    assert!(first.len().abs_diff(rest.len()) <= 1);
-
+    let requirements = bisect::requirements(&catalog, &suspects);
+    assert_eq!(requirements[&1], [7]);
+    assert_eq!(requirements[&4], [5]);
     for culprit in 0..9 {
-        let mut search = Search::start(&catalog, suspects.clone()).unwrap();
-        let mut steps = 1;
-        while search.answer(&catalog, search.testing.contains(&culprit)) {
-            steps += 1;
-            assert!(steps < 9, "the search must converge");
-        }
-        assert!(search.suspects.contains(&culprit), "culprit {culprit}");
-        assert!(search.suspects.len() <= 2);
+        let search = hunt(&catalog, &suspects, culprit);
+        assert_eq!(search.suspects, [culprit]);
+        assert_eq!(
+            bisect::closure(&requirements, [culprit]),
+            search.enabled.iter().copied().collect::<HashSet<_>>()
+        );
     }
     assert!(Search::start(&catalog, vec![3]).is_none());
-    assert!(bisect::split(&[vec![1, 7]]).is_none());
+}
+
+/// Regression: a framework that most mods require used to weld them into one group
+/// that could never be split, so "found" named half of the list.
+#[test]
+fn bisecting_separates_mods_linked_through_a_shared_framework() {
+    let mut mods = vec![item("framework.pack", "1", Source::Workshop, &[])];
+    for i in 1..40 {
+        let mut addon = item(
+            &format!("addon{i}.pack"),
+            &format!("{}", 100 + i),
+            Source::Workshop,
+            &[],
+        );
+        addon.metadata.req_mod_id_to_name = vec![("1".into(), "framework".into())];
+        mods.push(addon);
+        // A translation needs its addon, chaining it to the framework as well.
+        mods.push(item(
+            &format!("addon{i}_rus.pack"),
+            "",
+            Source::Workshop,
+            &[&format!("addon{i}.pack")],
+        ));
+    }
+    mods.push(item("loner.pack", "999", Source::Workshop, &[]));
+    let catalog = Catalog::new(mods);
+    let suspects: Vec<usize> = (0..catalog.mods.len()).collect();
+    for culprit in suspects.clone() {
+        let search = hunt(&catalog, &suspects, culprit);
+        assert_eq!(search.suspects, [culprit], "{}", catalog.mods[culprit].name);
+    }
+    // Without the framework, every addon and translation stops working.
+    let search = hunt(&catalog, &suspects, 0);
+    assert_eq!(search.dependents().len(), catalog.mods.len() - 2);
+    // Without one addon, only its translation does.
+    let search = hunt(&catalog, &suspects, 1);
+    assert_eq!(search.dependents(), [2]);
+}
+
+#[test]
+fn bisecting_keeps_mods_that_require_each_other_together() {
+    let catalog = Catalog::new(vec![
+        item("a.pack", "", Source::Workshop, &["b.pack"]),
+        item("b.pack", "", Source::Workshop, &["a.pack"]),
+        item("c.pack", "", Source::Workshop, &[]),
+    ]);
+    let search = hunt(&catalog, &[0, 1, 2], 1);
+    assert_eq!(search.suspects, [0, 1]);
+    assert!(Search::start(&catalog, vec![0, 1]).is_none());
+}
+
+#[test]
+fn bisecting_follows_a_renumbered_catalog() {
+    let catalog = Catalog::new(
+        (0..6)
+            .map(|i| item(&format!("m{i}.pack"), "", Source::Workshop, &[]))
+            .collect(),
+    );
+    let mut search = Search::start(&catalog, (0..6).collect()).unwrap();
+    let tested = search.testing.clone();
+    // A rescan reversed the indices and m0 was unsubscribed.
+    search.remap(|index| (index != 0).then(|| 10 - index));
+    let expected: Vec<usize> = tested.iter().filter(|&&m| m != 0).map(|m| 10 - m).collect();
+    assert_eq!(search.testing, expected);
+    assert!(!search.suspects.contains(&10));
+    assert!(search.answer(true) || search.suspects.len() <= 1);
+    assert!(search.suspects.iter().all(|m| expected.contains(m)));
 }
 
 #[test]

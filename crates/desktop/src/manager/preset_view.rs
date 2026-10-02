@@ -76,7 +76,7 @@ impl Manager {
                             .on_click(cx.listener(|this, _, _, cx| this.save_preset(cx))),
                     ),
             )
-            .when(self.settings.presets.is_empty(), |section| {
+            .when(self.user_presets().is_empty(), |section| {
                 section.child(hint(l.text(
                     "Name the current mod list to switch back to it in one click.",
                     "Назовите текущий список модов, чтобы возвращаться к нему в один клик.",

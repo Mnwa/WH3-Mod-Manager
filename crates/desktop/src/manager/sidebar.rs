@@ -230,9 +230,13 @@ impl Manager {
                     .child(
                         uniform_list(
                             "presets",
-                            self.settings.presets.len(),
+                            self.user_presets().len(),
                             cx.processor(|this, range: std::ops::Range<usize>, _, cx| {
-                                range.map(|index| this.preset_row(index, cx)).collect()
+                                let presets = this.user_presets();
+                                range
+                                    .filter_map(|row| presets.get(row).copied())
+                                    .map(|index| this.preset_row(index, cx))
+                                    .collect()
                             }),
                         )
                         .track_scroll(&self.preset_scroll)
@@ -240,5 +244,6 @@ impl Manager {
                     )
                     .child(vertical_scrollbar(&self.preset_scroll)),
             )
+            .children(self.snapshots_section(cx))
     }
 }

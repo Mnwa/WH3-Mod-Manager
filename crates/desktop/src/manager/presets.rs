@@ -1,7 +1,11 @@
 use super::Manager;
 use gpui_kit::*;
 use std::path::PathBuf;
-use wh3_core::{preset::Preset, storage};
+use wh3_core::{
+    localization::{Language, Message},
+    preset::Preset,
+    storage,
+};
 
 impl Manager {
     pub(super) fn import(&mut self, cx: &mut Context<Self>) {
@@ -113,6 +117,84 @@ pub(super) enum PresetAction {
 
 /// Snapshot taken on every launch, as the original's "On Last Game Launch".
 pub(super) const LAST_LAUNCH: &str = "On Last Game Launch";
+/// Snapshot taken when the manager opens, as the original's "On App Start".
+pub(super) const APP_START: &str = "On App Start";
+
+/// Presets the manager keeps up to date itself. Their stored names stay as the
+/// original writes them so both managers recognise them; only the display is localized.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Snapshot {
+    AppStart,
+    LastLaunch,
+    BeforeShared,
+    BeforeSearch,
+}
+
+impl Snapshot {
+    pub(super) const ALL: [Self; 4] = [
+        Self::AppStart,
+        Self::LastLaunch,
+        Self::BeforeShared,
+        Self::BeforeSearch,
+    ];
+
+    pub(super) fn stored_name(self) -> &'static str {
+        match self {
+            Self::AppStart => APP_START,
+            Self::LastLaunch => LAST_LAUNCH,
+            Self::BeforeShared => super::sharing::BEFORE_SHARED,
+            Self::BeforeSearch => super::hunt::BEFORE_SEARCH,
+        }
+    }
+
+    pub(super) fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|s| s.stored_name() == name)
+    }
+
+    /// Short enough for the sidebar in both languages; the tooltip carries the detail.
+    pub(super) fn label(self, language: Language) -> &'static str {
+        match self {
+            Self::AppStart => language.text("Manager opened", "Открытие менеджера"),
+            Self::LastLaunch => language.text("Last game launch", "Последний запуск игры"),
+            Self::BeforeShared => language.text("Before shared list", "До списка друга"),
+            Self::BeforeSearch => language.text("Before problem search", "До поиска проблемы"),
+        }
+    }
+
+    pub(super) fn description(self, language: Language) -> &'static str {
+        match self {
+            Self::AppStart => language.text(
+                "Your list when the manager opened; undoes this session's changes.",
+                "Список на момент открытия менеджера — отменяет изменения за сеанс.",
+            ),
+            Self::LastLaunch => language.text(
+                "The list you last played with.",
+                "Список, с которым вы играли последний раз.",
+            ),
+            Self::BeforeShared => language.text(
+                "Your list before you applied a shared one.",
+                "Ваш список до того, как вы применили список друга.",
+            ),
+            Self::BeforeSearch => language.text(
+                "Your list before the problem-mod search switched mods off.",
+                "Ваш список до того, как поиск проблемного мода отключал моды.",
+            ),
+        }
+    }
+}
+
+/// How a preset is named to the user: snapshots by their localized label, user presets verbatim.
+pub(super) fn preset_label(name: &str, language: Language) -> &str {
+    Snapshot::from_name(name).map_or(name, |snapshot| snapshot.label(language))
+}
+
+/// A status naming a preset, with snapshot names localized per language.
+pub(super) fn preset_message(name: &str, english: &str, russian: &str) -> Message {
+    Message::new(
+        english.replace("{}", preset_label(name, Language::English)),
+        russian.replace("{}", preset_label(name, Language::Russian)),
+    )
+}
 
 impl Manager {
     pub(super) fn preset_action(
@@ -151,16 +233,16 @@ impl Manager {
                     }
                 }
                 self.status = if enable {
-                    wh3_core::message!(
+                    preset_message(
+                        &preset.name,
                         "Enabled mods from “{}”",
                         "Включены моды из «{}»",
-                        preset.name
                     )
                 } else {
-                    wh3_core::message!(
+                    preset_message(
+                        &preset.name,
                         "Disabled mods from “{}”",
                         "Отключены моды из «{}»",
-                        preset.name
                     )
                 };
                 self.refresh_if_enabled_matters(cx);
@@ -168,12 +250,12 @@ impl Manager {
             PresetAction::Replace => {
                 self.settings.presets[index] = self.capture(preset.name.clone());
                 self.status =
-                    wh3_core::message!("Preset “{}” updated", "Пресет «{}» обновлён", preset.name);
+                    preset_message(&preset.name, "Preset “{}” updated", "Пресет «{}» обновлён");
             }
             PresetAction::Delete => {
                 self.settings.presets.remove(index);
                 self.status =
-                    wh3_core::message!("Preset “{}” deleted", "Пресет «{}» удалён", preset.name);
+                    preset_message(&preset.name, "Preset “{}” deleted", "Пресет «{}» удалён");
             }
         }
         self.dirty = true;

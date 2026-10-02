@@ -47,11 +47,11 @@ impl Manager {
             })
             .collect();
         self.apply_rules(cx);
-        self.status = wh3_core::message!(
-            "Preset “{}” · {} missing mods",
-            "Пресет «{}» · отсутствует модов: {}",
-            preset.name,
-            applied.missing.len()
+        let missing = applied.missing.len();
+        self.status = super::presets::preset_message(
+            &preset.name,
+            &format!("Preset “{{}}” · {missing} missing mods"),
+            &format!("Пресет «{{}}» · отсутствует модов: {missing}"),
         );
         self.diagnostics = applied
             .missing
