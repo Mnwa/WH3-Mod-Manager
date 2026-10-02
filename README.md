@@ -22,7 +22,7 @@
 
 <p align="center">
   <a href="https://github.com/Mnwa/WH3-Mod-Manager/releases/latest"><b>Download for Windows</b></a>
-  <br>choose the <b>WH3-Mod-Manager-v0.3.0-windows-x64.zip</b> asset
+  <br>Choose the <b>WH3-Mod-Manager-vx.y.z-windows-x64.zip</b> asset
 </p>
 
 ![The mod list: enabled mods with brass checkboxes, thumbnails, authors, update dates and conflict badges](docs/screenshot.png)
