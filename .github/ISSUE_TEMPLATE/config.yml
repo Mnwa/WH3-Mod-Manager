@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and how-to
+    url: https://github.com/Mnwa/WH3-Mod-Manager#questions
+    about: Answers about storage, multiplayer, finding a broken mod and reinstalling Workshop mods.
+  - name: Latest release
+    url: https://github.com/Mnwa/WH3-Mod-Manager/releases/latest
+    about: Check whether a newer version already fixes your problem.

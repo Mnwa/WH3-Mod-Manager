@@ -1,0 +1,106 @@
+name: Bug report
+description: Something in WH3 Mod Manager does not work as expected.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a problem. You can write in English or Russian.
+
+        If the game itself crashes with your mods, try **Settings → Find the mod that causes a problem…**
+        first: a broken mod is usually not a manager bug.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you report
+      options:
+        - label: I searched the [existing issues](https://github.com/Mnwa/WH3-Mod-Manager/issues?q=is%3Aissue) and found no report of this problem.
+          required: true
+        - label: I can reproduce it with the [latest release](https://github.com/Mnwa/WH3-Mod-Manager/releases/latest).
+          required: false
+  - type: input
+    id: version
+    attributes:
+      label: Manager version
+      description: Shown in the window title, for example `WH3 Mod Manager v0.3.0`.
+      placeholder: v0.3.0
+    validations:
+      required: true
+  - type: dropdown
+    id: windows
+    attributes:
+      label: Windows version
+      options:
+        - Windows 11
+        - Windows 10
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Where does the problem happen?
+      options:
+        - Mod list, search or load order
+        - Presets or sharing a list
+        - Steam Workshop (update, subscribe, collections)
+        - Play, Continue or start options
+        - Compatibility report
+        - Copies or links in the game folder
+        - Import from the original manager
+        - Self-update
+        - Startup, settings or layout
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: language
+    attributes:
+      label: Interface language
+      options:
+        - English
+        - Russian
+    validations:
+      required: false
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem and include the exact text of any error message.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Enable mods …
+        2. Click …
+        3. See …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: input
+    id: mod-count
+    attributes:
+      label: Approximate number of installed mods
+      description: Helps with performance and list problems.
+      placeholder: "350"
+    validations:
+      required: false
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Screenshots, shared mod list or other details
+      description: |
+        Drag images here. For load-order or launch problems, paste the text from
+        **Presets → Share → Copy my list**. Do not attach files that contain personal data.
+    validations:
+      required: false
