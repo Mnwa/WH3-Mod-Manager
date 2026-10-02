@@ -5,11 +5,18 @@
 //! release is published; until both exist the release is not offered.
 use crate::{Error, Result};
 use self_update::{Release, ReleaseAsset, ReleaseStatus, backends::github};
-use std::time::Duration;
+use std::{io::Read, path::Path, time::Duration};
 
 pub const REPO_OWNER: &str = "Mnwa";
 pub const REPO_NAME: &str = "WH3-Mod-Manager";
-pub const EXE_ASSET: &str = "wh3-mod-manager.exe";
+/// The executable's release asset. It must differ from [`INSTALLED_EXE`]: `self_update`
+/// treats a bare executable as a plain archive and copies it to `<temp>/<installed name>`
+/// inside the folder it was downloaded to, so equal names truncate the download before
+/// it is installed. Updaters up to 0.3.1 match only the old `wh3-mod-manager.exe` asset,
+/// which also keeps their broken installer from being offered newer releases.
+pub const EXE_ASSET: &str = "wh3-mod-manager-windows-x64.exe";
+/// Name the executable has once installed (and inside the release zip).
+pub const INSTALLED_EXE: &str = "wh3-mod-manager.exe";
 pub const SUMS_ASSET: &str = "SHA256SUMS.txt";
 /// Steamworks redistributable shipped next to the executable for the Workshop worker.
 pub const STEAM_API_ASSET: &str = "steam_api64.dll";
@@ -30,6 +37,7 @@ fn updater(current: &str) -> Result<github::Update> {
         .repo_owner(REPO_OWNER)
         .repo_name(REPO_NAME)
         .bin_name("wh3-mod-manager")
+        .bin_path_in_archive(INSTALLED_EXE)
         .current_version(current)
         .asset_matcher(|assets: &[ReleaseAsset]| {
             assets
@@ -38,10 +46,30 @@ fn updater(current: &str) -> Result<github::Update> {
                 .cloned()
         })
         .checksum_from_asset(SUMS_ASSET)
+        .verify_binary(verify_executable)
         .timeout(Duration::from_secs(60))
         .unattended()
         .build()
         .map_err(failure)
+}
+
+/// Reject a staged file that is not a Windows executable before it replaces the
+/// running one. The download checksum does not cover the extracted copy, so this is
+/// the last guard against installing an empty or truncated file.
+pub fn verify_executable(path: &Path) -> self_update::Result<()> {
+    // The DOS header is 64 bytes and starts with the `MZ` signature.
+    let mut header = Vec::with_capacity(64);
+    std::fs::File::open(path)?
+        .take(64)
+        .read_to_end(&mut header)?;
+    if header.len() == 64 && header.starts_with(b"MZ") {
+        Ok(())
+    } else {
+        Err(self_update::Error::verification_rejected(format!(
+            "{} is not a Windows executable",
+            path.display()
+        )))
+    }
 }
 
 /// Decide whether `release` should be offered without touching the network.

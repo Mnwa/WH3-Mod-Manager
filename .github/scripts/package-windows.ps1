@@ -23,7 +23,10 @@ Get-ChildItem "$package/*.exe","$package/*.dll" | Sort-Object Name | ForEach-Obj
 
 $archive = if ($Tag) { "WH3-Mod-Manager-$Tag-windows-x64.zip" } else { 'WH3-Mod-Manager-windows-x64.zip' }
 Compress-Archive -Path "$package/*" -DestinationPath "$assets/$archive"
-Copy-Item "$package/*.exe","$package/*.dll" "$assets/"
+Copy-Item "$package/*.dll" "$assets/"
+# The self-updater requires an asset name different from the installed executable's
+# (see EXE_ASSET in crates/core/src/update.rs).
+Copy-Item "$package/wh3-mod-manager.exe" "$assets/wh3-mod-manager-windows-x64.exe"
 Get-ChildItem "$assets/*" -File -Exclude 'SHA256SUMS.txt' | Sort-Object Name | ForEach-Object {
     $hash = Get-FileHash $_.FullName -Algorithm SHA256
     "$($hash.Hash.ToLower())  $($_.Name)"
