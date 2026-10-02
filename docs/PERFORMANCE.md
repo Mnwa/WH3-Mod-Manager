@@ -1,29 +1,32 @@
-# Производительность: первый Rust-перенос
+# Performance: initial Rust port
 
-Решение: оставить виртуализацию и фоновые операции. **Измерено**: число создаваемых
-строк кадра ограничено видимой областью при 1k/10k/100k модов; поиск 100k занимает
-около 1 мс на машине разработки. Это исходный baseline Rust-версии, не доказательство
-ускорения относительно Electron: оригинал на том же корпусе не профилировался.
+Decision: retain virtualization and background operations. **Measured:** rendered
+row count stays bounded by the viewport at 1k/10k/100k mods, and a 100k search takes
+about 1 ms on the development machine. This is a Rust baseline, not evidence of an
+improvement over Electron: the original was not profiled with the same corpus.
 
-## Контракт и архитектура
+## Contract and architecture
 
-- Основная цель — отзывчивость поиска, переключений и прокрутки большой библиотеки.
-- Корпус — `Catalog::demo`: 1 000 / 10 000 / 100 000 записей, смешанные русские/английские
-  названия, уникальные pack-имена и Workshop ID. Это синтетические данные, не реальные packs.
-- `uniform_list` создаёт только видимые строки; тест требует `0 < rendered_rows < 100`.
-- Строки фиксированной высоты 40 px; immutable-каталог и порядок передаются через Arc.
-- Поиск использует преднормализованную строку, debounce 75 мс и номер поколения.
-  Результат старого запроса не может заменить новый; предыдущая ожидающая задача отменяется.
-- Обход каталогов, чтение pack-индексов, конфликты, импорт и запись выполняются вне GUI-потока.
-- Операции сканирования/конфликтов отменяемые; в UI одновременно одна такая операция.
-- В горячем render нет сканирования, сортировки или клонирования всего каталога.
-  Массовые команды и применение пресетов могут копировать снимки состояния; их p95 отдельно
-  пока не измерялся. Для конфликтов память зависит от общего числа уникальных путей файлов.
+- The primary goal is responsive search, toggles and scrolling with large libraries.
+- The corpus is `Catalog::demo`: 1,000 / 10,000 / 100,000 synthetic records with mixed
+  Russian/English titles, unique pack names and Workshop IDs; not real pack files.
+- `uniform_list` constructs visible rows only; the test requires `0 < rendered_rows < 100`.
+- Rows are 40 px high; immutable catalog/order snapshots are shared through `Arc`.
+- Search uses pre-normalized text, a 75 ms debounce and generation tracking. Stale
+  results cannot replace newer results; previous waiting tasks are cancelled.
+- Directory traversal, pack-index reads, conflicts, imports and saves run outside
+  the GUI thread. Scan/conflict jobs are cancellable; one such job runs at a time.
+- Rendering does not scan, sort or clone the entire catalog. Bulk commands and preset
+  application may copy state snapshots; their p95 has not been measured separately.
+  Conflict-checking memory depends on the number of unique file paths.
+- Switching language updates UI text without rebuilding the catalog or repeating
+  background work. Row formatting allocates only the selected translation.
 
-## Среда и воспроизведение
+## Environment and reproduction
 
-Измерено 2026-10-02: Apple M5 Pro, macOS 26.6.2, Rust 1.98.1, aarch64,
-системный allocator. Версия Rust указана как среда измерения, в проекте используется `stable`.
+Measured on 2026-10-02: Apple M5 Pro, macOS 26.6.2, Rust 1.98.1, aarch64, system
+allocator. This compiler version identifies the measurement environment; the project
+tracks `stable` without a compiler-version pin.
 
 ```sh
 cargo bench -p wh3-core --bench catalog --locked
@@ -31,59 +34,77 @@ cargo test -p wh3-mod-manager --test visual --locked
 cargo test --release -p wh3-mod-manager --test visual --locked
 ```
 
-Поиск: 100 повторов, время построения каталога отдельно, в поиске учитывается выделение
-результата. Запрос `кислев 00`; результаты потребляются через `black_box`.
-UI: headless Metal, окно 1280×820, прогрев, 50 кадров с принудительным обновлением.
-Измеряется draw CPU-вызов, не полный input-to-photon с ожиданием GPU/vsync.
-Загрузка каталога и setup исключены из кадра. Дополнительно проверяются настоящие
-клики checkbox, фильтр включённых и поиск последнего мода по Ctrl/Cmd+F.
+Search: 100 repetitions, catalog construction measured separately; result allocation
+is included. The query is the Cyrillic word for Kislev followed by `00`; results are
+consumed through `black_box`. UI: headless Metal, 1280×820 window, warmup, then 50 forced
+redraws. Timings cover the CPU draw call, not full input-to-photon latency or GPU/vsync
+completion. Catalog loading and setup are excluded from frame timings. The test also
+exercises actual checkbox clicks, the enabled filter and last-record search through
+Ctrl/Cmd+F. It verifies English/Russian switching and captures both languages.
 
-## Результаты
+## Results
 
-**Измерено, release, поиск**:
+**Measured release search:**
 
-| Модов | Построение, мс | Поиск p50, мс | Поиск p95, мс |
+| Mods | Catalog build, ms | Search p50, ms | Search p95, ms |
 |---:|---:|---:|---:|
-| 1 000 | 1.458 | 0.017 | 0.019 |
-| 10 000 | 14.183 | 0.155 | 0.282 |
-| 100 000 | 67.132 | 0.710 | 1.155 |
+| 1,000 | 1.458 | 0.017 | 0.019 |
+| 10,000 | 14.183 | 0.155 | 0.282 |
+| 100,000 | 67.132 | 0.710 | 1.155 |
 
-**Измерено, debug, кадры после выравнивания колонок**:
+**Measured debug frames, after column alignment:**
 
-| Модов | Кадр p50, мс | Кадр p95, мс |
+| Mods | Frame p50, ms | Frame p95, ms |
 |---:|---:|---:|
-| 1 000 | 11.891 | 12.915 |
-| 10 000 | 12.536 | 15.150 |
-| 100 000 | 11.849 | 13.370 |
+| 1,000 | 11.891 | 12.915 |
+| 10,000 | 12.536 | 15.150 |
+| 100,000 | 11.849 | 13.370 |
 
-**Измерено, release, реальные GPUI/Metal кадры**:
+**Measured release GPUI/Metal frames (before localization):**
 
-| Модов | Кадр p50, мс | Кадр p95, мс |
+| Mods | Frame p50, ms | Frame p95, ms |
 |---:|---:|---:|
-| 1 000 | 0.900 | 0.977 |
-| 10 000 | 0.893 | 0.934 |
-| 100 000 | 0.912 | 1.053 |
+| 1,000 | 0.900 | 0.977 |
+| 10,000 | 0.893 | 0.934 |
+| 100,000 | 0.912 | 1.053 |
 
-Сырые отсчёты: [поиск](measurements/query-m5-pro.csv),
-[кадры](measurements/frames-m5-pro.csv). Финальный UI-прогон запускался напрямую
-из уже собранного release-бинарника, без параллельной компиляции. `/usr/bin/time -l`
-измерил пиковый RSS всего тестового процесса **161 234 944 байта (153.8 MiB)**,
-peak memory footprint **233 227 008 байт**. Это полный последовательный прогон всех
-трёх размеров с Metal и снимками; не отдельный замер удерживаемой памяти после burst.
+Raw samples: [search](measurements/query-m5-pro.csv),
+[frames](measurements/frames-m5-pro.csv). The release UI measurement ran directly
+from the already-built test executable, without concurrent compilation.
+`/usr/bin/time -l` measured peak process RSS of **161,234,944 bytes (153.8 MiB)** and
+peak memory footprint of **233,227,008 bytes**. This covers the complete sequential
+run of all three sizes with Metal and screenshots; it is not a separate measurement
+of memory retained after a burst.
 
-Эти debug-цифры служат проверкой масштаба работы, не оценкой скорости поставляемого exe.
-Тест не вводит жёсткий временной порог на общих CI-раннерах: структурная проверка
-виртуализации обязательна, численные замеры сохраняются для последующих сравнений.
+A follow-up release run after English/Russian localization produced:
 
-## Корректность и границы
+| Mods | Frame p50, ms | Frame p95, ms | Search p50, ms | Search p95, ms |
+|---:|---:|---:|---:|---:|
+| 1,000 | 0.911 | 0.961 | 0.017 | 0.032 |
+| 10,000 | 0.912 | 0.996 | 0.139 | 0.190 |
+| 100,000 | 0.904 | 0.929 | 0.806 | 1.242 |
 
-Проверены PFH5 и hashed-name индекс, усечённые/повреждённые packs, дубликаты имён,
-порядок и состояние пресетов, Unicode-поиск, сохранение исходного launch-script,
-экспорт v3/legacy-меты, бинарный roundtrip, CRC и bytecheck, backup и эталон WHM1.
-Нативные UI-замеры выполнены на macOS. Windows GPU/драйверы, запуск реального WH3,
-сканирование большого реального Workshop, post-burst RSS и скорость относительно
-Electron пока **не измерены**. SIMD, специальный allocator и unsafe не добавлялись.
+Raw samples: [localized frames](measurements/frames-localized-m5-pro.csv),
+[repeated search](measurements/query-localized-m5-pro.csv). The frame loop uses the
+English interface; language-switch tests and Russian screenshots follow it. The full
+test process, now capturing both locales, peaked at **178,225,152 bytes (170.0 MiB)**
+RSS and **267,092,736 bytes** memory footprint. These runs do not isolate the cost of
+localization from measurement noise and the additional screenshots.
 
-Следующий performance-baseline должен включать реальные библиотеки на Windows:
-холодный/тёплый запуск, прокрутку, быстрый ввод, переключение пресетов и конфликтный scan;
-проверять p95/p99 задержки UI, пиковую и удерживаемую память отдельно от пропускной способности.
+Debug values check how work scales, not the speed of the shipped executable. Shared
+CI runners have no hard timing threshold: structural virtualization checks are
+required and numerical samples are retained for future comparison.
+
+## Correctness and boundaries
+
+Tests cover PFH5 and hashed-name indexes, truncated/corrupt packs, duplicate names,
+preset order/state, Unicode search, preservation of the original launch script,
+v3/legacy metadata export, binary round trips, CRC/bytecheck, backups and the WHM1
+fixture. Native UI measurements were made on macOS. Windows GPU/driver performance,
+real WH3 launch, a large real Workshop scan, post-burst RSS and speed relative to
+Electron remain **unmeasured**. No SIMD, custom allocator or application unsafe code
+was introduced.
+
+The next baseline should use real Windows libraries: cold/warm startup, scrolling,
+rapid typing, preset switching and conflict scans. Measure p95/p99 UI latency, peak
+memory and retained memory separately from throughput.

@@ -20,7 +20,7 @@ pub struct Mod {
     pub movie: bool,
     pub dependencies: Vec<String>,
     pub metadata: crate::metadata::Metadata,
-    // Нормализация выполняется при сканировании, а не на каждый символ поиска.
+    // Normalize during scanning instead of on every search keystroke.
     search: String,
 }
 

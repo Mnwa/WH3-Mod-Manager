@@ -12,7 +12,11 @@ impl Manager {
             files: true,
             directories: false,
             multiple: false,
-            prompt: Some("JSON пресета / конфигурации".into()),
+            prompt: Some(
+                self.language
+                    .text("Preset / configuration JSON", "JSON пресета / конфигурации")
+                    .into(),
+            ),
         });
         self.io_task = Some(cx.spawn(async move |this, cx| {
             if let Ok(Ok(Some(paths))) = prompt.await
@@ -20,12 +24,19 @@ impl Manager {
             {
                 let result = cx
                     .background_spawn(async move {
-                        let metadata = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+                        let metadata = std::fs::metadata(&path).map_err(|e| {
+                            wh3_core::message!("File error: {}", "Ошибка файла: {}", e)
+                        })?;
                         if metadata.len() > 32 * 1024 * 1024 {
-                            return Err("Файл пресетов больше 32 МБ".to_owned());
+                            return Err(wh3_core::message!(
+                                "Preset file exceeds 32 MiB",
+                                "Файл пресетов больше 32 МБ"
+                            ));
                         }
-                        let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
-                        Preset::parse(&bytes).map_err(|e| e.to_string())
+                        let bytes = std::fs::read(path).map_err(|e| {
+                            wh3_core::message!("File error: {}", "Ошибка файла: {}", e)
+                        })?;
+                        Preset::parse(&bytes).map_err(|e| e.message())
                     })
                     .await;
                 let _ = this.update(cx, |this, cx| {
@@ -44,13 +55,14 @@ impl Manager {
                                     this.settings.presets.push(preset);
                                 }
                             }
-                            this.status = format!(
-                                "Импортировано пресетов: {count}. Выберите пресет для применения."
-                            )
-                            .into();
+                            this.status = wh3_core::message!(
+                                "Imported {count} presets. Select a preset to apply it.",
+                                "Импортировано пресетов: {count}. Выберите пресет для применения.",
+                                count = count
+                            );
                             this.dirty = true;
                         }
-                        Err(error) => this.status = error.into(),
+                        Err(error) => this.status = error,
                     }
                     cx.notify();
                 });
@@ -59,7 +71,7 @@ impl Manager {
     }
 
     pub(super) fn export(&mut self, cx: &mut Context<Self>) {
-        let preset = self.capture("Экспорт".into());
+        let preset = self.capture("Export".into());
         let prompt = cx.prompt_for_new_path(&PathBuf::from("."), Some("preset.json"));
         self.io_task = Some(cx.spawn(async move |this, cx| {
             if let Ok(Ok(Some(path))) = prompt.await {
@@ -70,8 +82,8 @@ impl Manager {
                     .await;
                 let _ = this.update(cx, |this, cx| {
                     this.status = match result {
-                        Ok(()) => "Пресет экспортирован".into(),
-                        Err(e) => e.to_string().into(),
+                        Ok(()) => wh3_core::message!("Preset exported", "Пресет экспортирован"),
+                        Err(e) => e.message(),
                     };
                     cx.notify();
                 });
@@ -85,7 +97,7 @@ impl Manager {
         }
         let name = self.preset_name.read(cx).value().trim().to_owned();
         if name.is_empty() {
-            self.status = "Введите название пресета".into();
+            self.status = wh3_core::message!("Enter a preset name", "Введите название пресета");
             cx.notify();
             return;
         }

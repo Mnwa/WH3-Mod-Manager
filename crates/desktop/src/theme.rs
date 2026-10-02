@@ -31,7 +31,7 @@ pub fn warning() -> Hsla {
 }
 
 pub fn install(cx: &mut App) {
-    // Общие токены применяются и к готовым компонентам kit.
+    // Apply shared tokens to the kit components as well.
     let theme = Theme::global_mut(cx);
     let mut dark = (*theme.dark_theme).clone();
     dark.colors.primary = Some("#3c78d8".into());

@@ -56,9 +56,9 @@ impl Manager {
             multiple: false,
             prompt: Some(
                 if game {
-                    "Папка игры"
+                    self.language.text("Game folder", "Папка игры")
                 } else {
-                    "Папка модов"
+                    self.language.text("Mod folder", "Папка модов")
                 }
                 .into(),
             ),
@@ -70,7 +70,10 @@ impl Manager {
                 let result = cx
                     .background_spawn(async move {
                         if game && !path.join("Warhammer3.exe").is_file() {
-                            return Err("В папке отсутствует Warhammer3.exe".to_owned());
+                            return Err(wh3_core::message!(
+                                "The folder does not contain Warhammer3.exe",
+                                "В папке отсутствует Warhammer3.exe"
+                            ));
                         }
                         Ok((
                             path.clone(),
@@ -94,7 +97,7 @@ impl Manager {
                         this.dirty = true;
                     }
                     Err(error) => {
-                        this.status = error.into();
+                        this.status = error;
                         cx.notify();
                     }
                 });
@@ -116,12 +119,24 @@ impl Manager {
                 files
                     .into_iter()
                     .map(|file| {
-                        SharedString::from(format!(
-                            "{} · {} Б{}",
-                            file.name,
-                            file.size,
-                            if file.compressed { " · сжат" } else { "" }
-                        ))
+                        wh3_core::localization::Message::new(
+                            format!(
+                                "{} · {} B{}",
+                                file.name,
+                                file.size,
+                                if file.compressed {
+                                    " · compressed"
+                                } else {
+                                    ""
+                                }
+                            ),
+                            format!(
+                                "{} · {} Б{}",
+                                file.name,
+                                file.size,
+                                if file.compressed { " · сжат" } else { "" }
+                            ),
+                        )
                     })
                     .collect()
             })
@@ -136,7 +151,7 @@ impl Manager {
                             this.details = files;
                             this.show_report = true;
                         }
-                        Err(e) => this.status = e.to_string().into(),
+                        Err(e) => this.status = e.message(),
                     }
                 }
                 cx.notify();
@@ -151,7 +166,10 @@ impl Manager {
         }
         self.busy = true;
         self.cancellable = true;
-        self.status = "Проверка совпадающих файлов и зависимостей…".into();
+        self.status = wh3_core::message!(
+            "Checking overlapping files and dependencies…",
+            "Проверка совпадающих файлов и зависимостей…"
+        );
         self.cancel.store(false, Ordering::Relaxed);
         let (catalog, order, enabled, cancel) = (
             self.catalog.clone(),
@@ -162,7 +180,7 @@ impl Manager {
         let task = cx.background_spawn(async move {
             let report = conflict::check(&catalog, &order, &enabled, &cancel)?;
             let count = report.collisions.len();
-            let lines: Vec<SharedString> = report
+            let lines: Vec<wh3_core::localization::Message> = report
                 .warnings
                 .into_iter()
                 .chain(report.collisions.into_iter().map(|collision| {
@@ -176,8 +194,8 @@ impl Manager {
                             .collect::<Vec<_>>()
                             .join(" / ")
                     )
+                    .into()
                 }))
-                .map(Into::into)
                 .collect();
             Ok::<_, wh3_core::Error>((count, lines))
         });
@@ -187,8 +205,8 @@ impl Manager {
                 this.busy = false;
                 this.cancellable = false;
                 match result {
-                    Ok((count, lines)) => { this.status = format!("Совпадающих путей: {count}. Совпадение не всегда означает несовместимость.").into(); this.diagnostics = lines; this.details.clear(); this.show_report = true; }
-                    Err(error) => this.status = error.to_string().into(),
+                    Ok((count, lines)) => { this.status = wh3_core::message!("Overlapping paths: {count}. An overlap does not always mean incompatibility.", "Совпадающих путей: {count}. Совпадение не всегда означает несовместимость.", count = count); this.diagnostics = lines; this.details.clear(); this.show_report = true; }
+                    Err(error) => this.status = error.message(),
                 }
                 cx.notify();
             });
@@ -218,8 +236,11 @@ impl Manager {
             let _ = this.update(cx, |this, cx| {
                 this.busy = false;
                 this.status = match result {
-                    Ok(()) => "Команда запуска передана игре".into(),
-                    Err(e) => e.to_string().into(),
+                    Ok(()) => wh3_core::message!(
+                        "Launch command sent to the game",
+                        "Команда запуска передана игре"
+                    ),
+                    Err(e) => e.message(),
                 };
                 cx.notify();
             });

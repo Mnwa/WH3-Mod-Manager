@@ -1,6 +1,8 @@
 mod actions;
 mod jobs;
+mod language;
 mod metadata;
+mod persistence;
 mod view;
 
 use gpui_kit::{component::input::InputState, *};
@@ -29,9 +31,12 @@ pub struct Manager {
     pub(super) preset_name: Entity<InputState>,
     pub(super) filter: Filter,
     pub(super) settings: Settings,
-    pub(super) status: SharedString,
-    pub(super) diagnostics: Vec<SharedString>,
-    pub(super) details: Vec<SharedString>,
+    pub(super) status: wh3_core::localization::Message,
+    pub(super) language: wh3_core::localization::Language,
+    pub(super) preferences_task: Option<Task<()>>,
+    pub(super) preferences_busy: bool,
+    pub(super) diagnostics: Vec<wh3_core::localization::Message>,
+    pub(super) details: Vec<wh3_core::localization::Message>,
     pub(super) show_report: bool,
     pub(super) busy: bool,
     pub(super) cancellable: bool,
@@ -57,6 +62,7 @@ impl Drop for Manager {
 }
 
 mod list;
+mod selection;
 mod shell;
 
 mod presets;

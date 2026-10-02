@@ -16,7 +16,7 @@ impl Manager {
         let source = match item.source {
             Source::Data => "Data",
             Source::Workshop => "Workshop",
-            Source::Custom => "Локальный",
+            Source::Custom => self.language.text("Local", "Локальный"),
         };
         div()
             .id(("mod", index))
@@ -40,7 +40,12 @@ impl Manager {
                     Checkbox::new(("check", index))
                         .checked(self.enabled.contains(&index))
                         .disabled(self.busy)
-                        .accessibility_label(format!("Включить {}", item.title))
+                        .accessibility_label(crate::ui_text!(
+                            self.language,
+                            "Enable {}",
+                            "Включить {}",
+                            item.title
+                        ))
                         .on_click(cx.listener(move |this, _, _, cx| this.toggle(index, cx))),
                 ),
             )
@@ -57,7 +62,7 @@ impl Manager {
             .child(
                 cell(
                     if item.movie {
-                        "Movie / авто"
+                        self.language.text("Movie / auto", "Movie / авто")
                     } else {
                         source
                     },
@@ -70,8 +75,16 @@ impl Manager {
                 }),
             )
             .child(
-                cell(format!("{:.1} МБ", item.size as f64 / 1_048_576.), 85.)
-                    .text_color(theme::muted()),
+                cell(
+                    crate::ui_text!(
+                        self.language,
+                        "{:.1} MiB",
+                        "{:.1} МБ",
+                        item.size as f64 / 1_048_576.
+                    ),
+                    85.,
+                )
+                .text_color(theme::muted()),
             )
     }
 
@@ -90,8 +103,12 @@ impl Manager {
                     .p_3()
                     .child(div().flex_1().child(Input::new(&self.search).small()))
                     .child(
-                        button("check", "Проверить конфликты", !self.busy && !self.demo)
-                            .on_click(cx.listener(|this, _, _, cx| this.check(cx))),
+                        button(
+                            "check",
+                            self.language.text("Check conflicts", "Проверить конфликты"),
+                            !self.busy && !self.demo,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| this.check(cx))),
                     ),
             )
             .child(
@@ -109,9 +126,9 @@ impl Manager {
                             button(
                                 "sort",
                                 if self.sort_name {
-                                    "Название ↑"
+                                    self.language.text("Name ↑", "Название ↑")
                                 } else {
-                                    "Порядок загрузки ↕"
+                                    self.language.text("Load order ↕", "Порядок загрузки ↕")
                                 },
                                 true,
                             )
@@ -124,8 +141,8 @@ impl Manager {
                         ),
                     )
                     .child(cell("PACK", 220.))
-                    .child(cell("ИСТОЧНИК", 100.))
-                    .child(cell("РАЗМЕР", 85.)),
+                    .child(cell(self.language.text("SOURCE", "ИСТОЧНИК"), 100.))
+                    .child(cell(self.language.text("SIZE", "РАЗМЕР"), 85.)),
             )
             .child(if self.visible.is_empty() {
                 div()
@@ -136,15 +153,19 @@ impl Manager {
                     .justify_center()
                     .gap_3()
                     .child(if self.busy {
-                        "Загрузка библиотеки…"
+                        self.language
+                            .text("Loading library…", "Загрузка библиотеки…")
                     } else {
-                        "Моды не найдены"
+                        self.language.text("No mods found", "Моды не найдены")
                     })
                     .child(
                         div()
                             .text_sm()
                             .text_color(theme::muted())
-                            .child("Выберите папку игры или добавьте папку с .pack файлами."),
+                            .child(self.language.text(
+                                "Select the game folder or add a folder containing .pack files.",
+                                "Выберите папку игры или добавьте папку с .pack файлами.",
+                            )),
                     )
                     .into_any_element()
             } else {

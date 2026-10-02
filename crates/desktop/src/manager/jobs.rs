@@ -14,10 +14,20 @@ use wh3_core::{catalog::Catalog, preset::Preset, scan, steam, storage};
 
 impl Manager {
     pub fn new(demo: Option<usize>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        crate::i18n::install();
         let search = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("Поиск по названию, pack или Workshop ID…")
+            InputState::new(window, cx).placeholder(
+                wh3_core::localization::Language::default().text(
+                    "Search by name, pack or Workshop ID…",
+                    "Поиск по названию, pack или Workshop ID…",
+                ),
+            )
         });
-        let preset_name = cx.new(|cx| InputState::new(window, cx).placeholder("Название пресета"));
+        let preset_name = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(
+                wh3_core::localization::Language::default().text("Preset name", "Название пресета"),
+            )
+        });
         let subscription = cx.subscribe(&search, |this: &mut Self, _, event, cx| {
             if matches!(event, InputEvent::Change) {
                 this.refresh_query(cx);
@@ -35,7 +45,10 @@ impl Manager {
             preset_name,
             filter: Filter::All,
             settings: Default::default(),
-            status: "Загрузка…".into(),
+            language: Default::default(),
+            preferences_task: None,
+            preferences_busy: false,
+            status: wh3_core::message!("Loading…", "Загрузка…"),
             diagnostics: vec![],
             details: vec![],
             show_report: false,
@@ -54,6 +67,7 @@ impl Manager {
             _subscriptions: vec![subscription],
             rendered_rows: 0,
         };
+        this.load_language(window, cx);
         let cancel = this.cancel.clone();
         let task = cx.background_spawn(async move {
             if let Some(count) = demo {
@@ -85,7 +99,7 @@ impl Manager {
                         this.dirty = false;
                     }
                     Err(error) => {
-                        this.status = error.to_string().into();
+                        this.status = error.message();
                         cx.notify();
                     }
                 }
@@ -99,22 +113,24 @@ impl Manager {
         self.selected = None;
         self.details.clear();
         let preset = self.settings.current.clone().unwrap_or(Preset {
-            name: "Текущий".into(),
+            name: "Current".into(),
             mods: vec![],
             version: None,
         });
         self.apply_preset(&preset, cx);
-        self.diagnostics
-            .extend(scan.warnings.into_iter().map(SharedString::from));
+        self.diagnostics.extend(scan.warnings);
         self.status = if self.demo {
-            "Демонстрация · файлы игры не используются".into()
+            wh3_core::message!(
+                "Demo · no game files are used",
+                "Демонстрация · файлы игры не используются"
+            )
         } else {
-            format!(
+            wh3_core::message!(
+                "Found {} mods · {} warnings",
                 "Найдено {} модов · предупреждений: {}",
                 self.catalog.mods.len(),
                 self.diagnostics.len()
             )
-            .into()
         };
         cx.notify();
     }
@@ -123,10 +139,10 @@ impl Manager {
         if self.busy || self.demo {
             return;
         }
-        self.settings.current = Some(self.capture("Текущий".into()));
+        self.settings.current = Some(self.capture("Current".into()));
         self.busy = true;
         self.cancellable = true;
-        self.status = "Сканирование файлов…".into();
+        self.status = wh3_core::message!("Scanning files…", "Сканирование файлов…");
         self.cancel.store(true, Ordering::Relaxed);
         self.cancel = Arc::new(AtomicBool::new(false));
         self.generation += 1;
@@ -149,7 +165,7 @@ impl Manager {
                 this.cancellable = false;
                 match result {
                     Ok(scan) => this.apply_scan(scan, cx),
-                    Err(error) => this.status = error.to_string().into(),
+                    Err(error) => this.status = error.message(),
                 }
                 cx.notify();
             });
@@ -198,104 +214,5 @@ impl Manager {
                 cx.notify();
             });
         }));
-    }
-
-    pub(super) fn capture(&self, name: String) -> Preset {
-        Preset::capture(name, &self.catalog, &self.order, &self.enabled)
-    }
-
-    pub(super) fn apply_preset(&mut self, preset: &Preset, cx: &mut Context<Self>) {
-        let applied = preset.apply(&self.catalog);
-        self.order = Arc::new(applied.order);
-        self.rebuild_ranks();
-        self.enabled = applied.enabled;
-        self.status = format!(
-            "Пресет «{}» · отсутствует модов: {}",
-            preset.name,
-            applied.missing.len()
-        )
-        .into();
-        self.diagnostics = applied
-            .missing
-            .into_iter()
-            .map(|name| format!("Не найден мод: {name}").into())
-            .collect();
-        self.dirty = true;
-        self.refresh_query(cx);
-        cx.notify();
-    }
-
-    pub(super) fn rebuild_ranks(&mut self) {
-        self.ranks.resize(self.catalog.mods.len(), 0);
-        for (rank, &index) in self.order.iter().enumerate() {
-            self.ranks[index] = rank + 1;
-        }
-    }
-
-    pub(super) fn save(&mut self, cx: &mut Context<Self>) {
-        if self.busy || self.demo {
-            return;
-        }
-        self.settings.current = Some(self.capture("Текущий".into()));
-        let settings = self.settings.clone();
-        self.busy = true;
-        self.status = "Сохранение…".into();
-        let task = cx
-            .background_spawn(async move { storage::save(&storage::settings_path()?, &settings) });
-        self.job = Some(cx.spawn(async move |this, cx| {
-            let result = task.await;
-            let _ = this.update(cx, |this, cx| {
-                this.busy = false;
-                match result {
-                    Ok(()) => {
-                        this.dirty = false;
-                        this.status = "Настройки и порядок модов сохранены".into();
-                    }
-                    Err(error) => this.status = error.to_string().into(),
-                }
-                cx.notify();
-            });
-        }));
-        cx.notify();
-    }
-
-    pub(crate) fn request_close(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        if self.demo || (!self.dirty && !self.busy) {
-            return true;
-        }
-        if self.busy {
-            self.status = "Дождитесь завершения операции перед закрытием".into();
-            cx.notify();
-            return false;
-        }
-        self.settings.current = Some(self.capture("Текущий".into()));
-        let settings = self.settings.clone();
-        let handle = window.window_handle();
-        self.busy = true;
-        let task = cx
-            .background_spawn(async move { storage::save(&storage::settings_path()?, &settings) });
-        self.job = Some(cx.spawn(async move |this, cx| {
-            let result = task.await;
-            let succeeded = result.is_ok();
-            let _ = this.update(cx, |this, cx| {
-                this.busy = false;
-                match result {
-                    Ok(()) => this.dirty = false,
-                    Err(error) => {
-                        this.status =
-                            format!("Не удалось сохранить перед закрытием: {error}").into()
-                    }
-                }
-                cx.notify();
-            });
-            if succeeded {
-                let _ = cx.update_window(handle, |_, window, _| window.remove_window());
-            } else if let Ok(prompt) = cx.update_window(handle, |_, window, cx| {
-                window.prompt(PromptLevel::Warning, "Не удалось сохранить библиотеку", Some("Можно остаться и исправить ошибку или закрыть окно без сохранения последних изменений."), &["Остаться", "Закрыть без сохранения"], cx)
-            }) && prompt.await == Ok(1) {
-                let _ = cx.update_window(handle, |_, window, _| window.remove_window());
-            }
-        }));
-        false
     }
 }

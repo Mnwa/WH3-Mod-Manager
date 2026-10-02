@@ -1,46 +1,59 @@
-# Бинарное хранилище WHM1
+# Binary persistence
 
-Приложение сохраняет библиотеку в пользовательской config-папке:
+The library is stored in the user's configuration directory:
 
 - Windows: `%APPDATA%/wh3-mod-manager-rust/library.whmm`.
 - macOS: `~/Library/Application Support/wh3-mod-manager-rust/library.whmm`.
-- Linux: `$XDG_CONFIG_HOME/wh3-mod-manager-rust/library.whmm` (обычно `~/.config`).
+- Linux: `$XDG_CONFIG_HOME/wh3-mod-manager-rust/library.whmm` (usually under `~/.config`).
 
-JSON используется только для импорта/экспорта. Моды и их pack-payload не копируются в библиотеку.
+JSON is used only for import/export. Mod files and pack payloads are not copied into the library.
 
-## Формат
+## WHM1 library format
 
-| Смещение | Значение |
+| Offset | Value |
 |---|---|
-| 0..4 | ASCII `WHM1`: сигнатура и версия |
-| 4..8 | Длина payload, u32 little endian |
-| 8..12 | CRC32 payload, u32 little endian |
+| 0..4 | ASCII `WHM1`: signature and version |
+| 4..8 | Payload length, little-endian u32 |
+| 8..12 | Payload CRC32, little-endian u32 |
 | 12.. | rkyv `StateRecord` |
 
-Параметры rkyv фиксируют **формат данных**, а не версию Rust: `little_endian`,
-`pointer_width_32`, `unaligned`, `bytecheck`. Схема записи находится отдельно от
-доменных моделей в `storage_format.rs`, как в `cr-chat-desktop`.
-Она содержит пути, источники, текущий порядок/включение, пресеты и метаданные модов.
-Строки заимствуются при сериализации и пишутся сразу в выходной буфер после заголовка.
-При чтении сначала проверяются длина, checksum и rkyv bytecheck, затем восстанавливаются
-поля модели. Непроверенный `access_unchecked` и unsafe не используются.
+The rkyv features fix the **data format**, not the Rust compiler version:
+`little_endian`, `pointer_width_32`, `unaligned`, `bytecheck`. As in `cr-chat-desktop`,
+the record schema lives separately from domain models, in `storage_format.rs`.
+It contains paths, sources, current order/enabled states, presets and mod metadata.
+Serialization borrows strings and writes directly after the header in the output
+buffer. Reads validate length, checksum and rkyv bytecheck before reconstructing the
+model. Neither `access_unchecked` nor application `unsafe` code is used.
 
-Максимальный размер файла — 128 МБ. Повреждение, неизвестная версия и неизвестный код
-источника возвращают ошибку. CRC32 обнаруживает случайную порчу; это не криптографическая
-подпись. Хранилище не шифруется: здесь нет медицинских данных и токенов из проекта-референса.
+Files are limited to 128 MiB. Corruption, unknown versions and unknown source codes
+return an error. CRC32 detects accidental corruption; it is not a cryptographic
+signature. The store is unencrypted: it holds game metadata rather than the medical
+data or tokens handled by the reference project.
 
-## Запись и восстановление
+## Writing and recovery
 
-Запись выполняется в фоне: временный файл в той же папке → `sync_all` → атомарная замена.
-Перед заменой существующая библиотека валидируется и сохраняется в `library.whmm.bak`.
-Ошибка в старой библиотеке запрещает её перезапись: пустое состояние после ошибки загрузки
-не уничтожает пользовательские данные.
+Writes happen in the background: a temporary file in the same directory is flushed
+with `sync_all`, then atomically replaces the destination. Before replacement, the
+existing library is validated and copied to `library.whmm.bak`. An invalid existing
+library blocks replacement, so an empty state after a load error cannot destroy it.
 
-Если основная библиотека повреждена, закройте приложение, сохраните повреждённый файл
-отдельно и восстановите `library.whmm.bak` как `library.whmm`. Автоматической подмены
-повреждённого состояния нет, чтобы не скрывать потерю последнего сохранения.
+If the main library is damaged, close the application, keep a separate copy of the
+damaged file, then restore `library.whmm.bak` as `library.whmm`. Recovery is deliberately
+explicit so the loss of the latest saved generation is not hidden.
 
-При изменении схемы необходимо добавить новую сигнатуру/версию и явную миграцию старой.
-Доменную структуру можно менять без неявного изменения on-disk схемы. Автоматические тесты
-проверяют roundtrip Unicode/меты, повреждение каждого байта, обрезанные файлы, отказ
-перезаписи повреждённой библиотеки сохранение предыдущего поколения и точное совпадение с эталонным файлом WHM1.
+Schema changes require a new signature/version and an explicit migration from the
+old schema. Domain models can change without implicitly changing the disk layout.
+Tests cover Unicode/metadata round trips, every-byte corruption, truncation, refusal
+to overwrite an invalid library, previous-generation backup and byte-for-byte
+agreement with the frozen WHM1 fixture.
+
+## WHP1 interface preferences
+
+`preferences.whmp` lives beside the library. It is exactly five bytes: ASCII `WHP1`
+followed by `0` for English or `1` for Russian. Missing preferences default to English;
+unknown signatures, language codes, truncation and trailing bytes are rejected.
+
+Language changes are saved atomically in the background, independently of library
+saves. They do not alter the WHM1 schema or its backup. Demo mode does not read or
+write persistent language preferences. Tests cover restart persistence, malformed
+records and preservation of the neighboring library file.

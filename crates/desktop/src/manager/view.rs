@@ -100,13 +100,14 @@ impl Render for Manager {
                         .flex_col()
                         .border_t_1()
                         .border_color(theme::border())
-                        .child(
-                            div()
-                                .px_3()
-                                .py_1()
-                                .text_color(theme::warning())
-                                .child(format!("Отчёт · {count} записей · Esc — закрыть")),
-                        )
+                        .child(div().px_3().py_1().text_color(theme::warning()).child(
+                            crate::ui_text!(
+                                self.language,
+                                "Report · {count} entries · Esc to close",
+                                "Отчёт · {count} записей · Esc — закрыть",
+                                count = count
+                            ),
+                        ))
                         .child(
                             uniform_list(
                                 "report-lines",
@@ -124,7 +125,7 @@ impl Render for Manager {
                                                 .px_3()
                                                 .text_xs()
                                                 .truncate()
-                                                .child(lines[i].clone())
+                                                .child(lines[i].text(this.language).to_owned())
                                         })
                                         .collect()
                                 }),
@@ -146,15 +147,26 @@ impl Render for Manager {
                     .border_color(theme::border())
                     .text_xs()
                     .text_color(theme::muted())
-                    .child(format!(
+                    .child(crate::ui_text!(
+                        self.language,
+                        "{} / {} mods · {} enabled",
                         "{} / {} модов · включено {}",
                         self.visible.len(),
                         self.catalog.mods.len(),
                         self.enabled.len()
                     ))
-                    .child(div().flex_1().truncate().child(self.status.clone()))
+                    .child(
+                        div()
+                            .flex_1()
+                            .truncate()
+                            .child(self.status.text(self.language).to_owned()),
+                    )
                     .when(self.dirty, |bar| {
-                        bar.child(div().text_color(theme::warning()).child("● Не сохранено"))
+                        bar.child(
+                            div()
+                                .text_color(theme::warning())
+                                .child(self.language.text("● Unsaved", "● Не сохранено")),
+                        )
                     }),
             )
     }

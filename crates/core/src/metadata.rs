@@ -1,4 +1,4 @@
-//! Перенос сохранённой меты Shazbot без запуска Electron и без изменения его конфигурации.
+//! Import persisted Shazbot metadata without running Electron or modifying its configuration.
 use crate::{Error, Result, catalog::Catalog, error::io, preset::Preset, storage};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -26,7 +26,7 @@ pub struct Bundle {
     pub mods: BTreeMap<String, Metadata>,
     pub presets: Vec<Preset>,
     pub current_preset: Option<Preset>,
-    /// Сохраняем неперенесённые правила в экспорте, но не выдаём их за применённые.
+    /// Preserve unsupported rules in exports without claiming to apply them.
     #[serde(default)]
     pub load_order_rules: Value,
     #[serde(default)]
@@ -39,9 +39,10 @@ impl Bundle {
         if value.get("format").and_then(Value::as_str) == Some(FORMAT) {
             let bundle: Self = serde_json::from_value(value)?;
             if bundle.version != 1 || bundle.game != "wh3" {
-                return Err(Error::Invalid(
-                    "Неподдерживаемая версия или игра в метаданных".into(),
-                ));
+                return Err(Error::Invalid(crate::message!(
+                    "Unsupported metadata version or game",
+                    "Неподдерживаемая версия или игра в метаданных"
+                )));
             }
             return Ok(bundle);
         }
@@ -64,12 +65,13 @@ impl Bundle {
                 .and_then(|games| games.get("wh3"))
         });
         if current.is_none() && presets.is_none() && game.get("modUserData").is_none() {
-            return Err(Error::Invalid(
-                "Не найдены метаданные WH3 в конфигурации Shazbot".into(),
-            ));
+            return Err(Error::Invalid(crate::message!(
+                "No WH3 metadata found in the Shazbot configuration",
+                "Не найдены метаданные WH3 в конфигурации Shazbot"
+            )));
         }
         let mut mods = BTreeMap::new();
-        // Сначала снимки, затем текущая библиотека и каноническая мета v3.
+        // Apply snapshots first, then the current library and canonical v3 metadata.
         if let Some(presets) = presets.and_then(Value::as_array) {
             for preset in presets {
                 collect_full_mods(preset, &mut mods)?;
@@ -94,12 +96,12 @@ impl Bundle {
             .map(|v| serde_json::from_value(v.clone()))
             .transpose()?;
         let load_order_rules = game.get("loadOrderRules").cloned().unwrap_or(Value::Null);
-        let mut warnings = vec!["Экспорт содержит только метаданные, сохранённые оригинальным менеджером. Отсутствующие поля Workshop не скачиваются.".into()];
+        let mut warnings = vec!["Export contains only metadata saved by the original manager. Missing Workshop fields are not downloaded.".into()];
         if load_order_rules
             .as_array()
             .is_some_and(|rules| !rules.is_empty())
         {
-            warnings.push("Автоматические правила порядка сохранены в файле, но пока не применяются Rust-менеджером.".into());
+            warnings.push("Automatic load-order rules are preserved in the file but are not yet applied by the Rust manager.".into());
         }
         Ok(Self {
             format: FORMAT.into(),
@@ -173,7 +175,10 @@ pub fn apply(catalog: &mut Catalog, metadata: &BTreeMap<String, Metadata>) -> us
 pub fn read(path: &Path) -> Result<Bundle> {
     let size = fs::metadata(path).map_err(|e| io(path, e))?.len();
     if size > 64 * 1024 * 1024 {
-        return Err(Error::Invalid("Конфигурация больше 64 МБ".into()));
+        return Err(Error::Invalid(crate::message!(
+            "Configuration exceeds 64 MiB",
+            "Конфигурация больше 64 МБ"
+        )));
     }
     Bundle::parse(&fs::read(path).map_err(|e| io(path, e))?)
 }
@@ -183,11 +188,35 @@ pub fn export(source: &Path, destination: &Path) -> Result<Bundle> {
         || (destination.exists()
             && fs::canonicalize(source).ok() == fs::canonicalize(destination).ok())
     {
-        return Err(Error::Invalid(
-            "Экспорт не должен перезаписывать исходный config.json".into(),
-        ));
+        return Err(Error::Invalid(crate::message!(
+            "Export must not overwrite the original config.json",
+            "Экспорт не должен перезаписывать исходный config.json"
+        )));
     }
     let bundle = read(source)?;
     storage::atomic_write(destination, &serde_json::to_vec_pretty(&bundle)?)?;
     Ok(bundle)
+}
+
+/// Localize our known export notices; preserve third-party warnings verbatim.
+pub fn warning_message(warning: String) -> crate::localization::Message {
+    match warning.as_str() {
+        "Export contains only metadata saved by the original manager. Missing Workshop fields are not downloaded."
+        | "Экспорт содержит только метаданные, сохранённые оригинальным менеджером. Отсутствующие поля Workshop не скачиваются." =>
+        {
+            crate::message!(
+                "Export contains only metadata saved by the original manager. Missing Workshop fields are not downloaded.",
+                "Экспорт содержит только метаданные, сохранённые оригинальным менеджером. Отсутствующие поля Workshop не скачиваются."
+            )
+        }
+        "Automatic load-order rules are preserved in the file but are not yet applied by the Rust manager."
+        | "Автоматические правила порядка сохранены в файле, но пока не применяются Rust-менеджером." =>
+        {
+            crate::message!(
+                "Automatic load-order rules are preserved in the file but are not yet applied by the Rust manager.",
+                "Автоматические правила порядка сохранены в файле, но пока не применяются Rust-менеджером."
+            )
+        }
+        _ => warning.into(),
+    }
 }

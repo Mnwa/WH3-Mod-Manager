@@ -41,7 +41,7 @@ pub fn run() {
                 });
                 cx.new(|cx| Root::new(manager, window, cx))
             }) {
-                eprintln!("Не удалось открыть окно: {error}");
+                eprintln!("Could not open the window: {error}");
                 cx.quit();
             }
             cx.activate(true);

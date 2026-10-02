@@ -56,7 +56,7 @@ jobs:
           Copy-Item target/x86_64-pc-windows-msvc/release/wh3-mod-manager.exe dist/
           Copy-Item target/x86_64-pc-windows-msvc/release/wh3-meta.exe dist/
           Copy-Item LICENSE,README.md dist/
-          Copy-Item docs/MIGRATION.md,docs/STORAGE.md dist/
+          Copy-Item docs -Destination dist/docs -Recurse
           Get-ChildItem dist/*.exe | ForEach-Object {
             $hash = Get-FileHash $_.FullName -Algorithm SHA256
             "$($hash.Hash.ToLower())  $($_.Name)" | Add-Content dist/SHA256SUMS.txt

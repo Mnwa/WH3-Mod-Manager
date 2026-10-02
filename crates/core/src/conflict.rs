@@ -7,7 +7,7 @@ use std::{
 #[derive(Default)]
 pub struct Report {
     pub collisions: Vec<Collision>,
-    pub warnings: Vec<String>,
+    pub warnings: Vec<crate::localization::Message>,
 }
 pub struct Collision {
     pub file: String,
@@ -35,9 +35,11 @@ pub fn check(
         let item = &catalog.mods[index];
         for dependency in &item.dependencies {
             if !enabled_names.contains(&dependency.to_lowercase()) {
-                report.warnings.push(format!(
-                    "{}: не включена зависимость {dependency}",
-                    item.name
+                report.warnings.push(crate::message!(
+                    "{}: dependency {} is not enabled",
+                    "{}: не включена зависимость {}",
+                    item.name,
+                    dependency
                 ));
             }
         }
@@ -60,7 +62,21 @@ pub fn check(
                     }
                 }
             }
-            Err(e) => report.warnings.push(format!("{}: {e}", item.name)),
+            Err(e) => {
+                let detail = e.message();
+                report.warnings.push(crate::localization::Message::new(
+                    format!(
+                        "{}: {}",
+                        item.name,
+                        detail.text(crate::localization::Language::English)
+                    ),
+                    format!(
+                        "{}: {}",
+                        item.name,
+                        detail.text(crate::localization::Language::Russian)
+                    ),
+                ));
+            }
         }
     }
     report.collisions = collisions

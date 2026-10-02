@@ -5,7 +5,10 @@ pub const MOD_LIST: &str = "wh3_rust_mods.txt";
 
 fn quote(value: &str) -> Result<String> {
     if value.contains(['"', '\n', '\r', '\0', ';']) {
-        return Err(Error::Invalid("Недопустимые символы в пути мода".into()));
+        return Err(Error::Invalid(crate::message!(
+            "Invalid characters in mod path",
+            "Недопустимые символы в пути мода"
+        )));
     }
     Ok(format!("\"{value}\""))
 }
@@ -16,20 +19,25 @@ pub fn script(catalog: &Catalog, order: &[usize], enabled: &HashSet<usize>) -> R
     let mut lines = Vec::new();
     let mut mods = Vec::new();
     for &index in order.iter().filter(|i| enabled.contains(i)) {
-        let item = catalog
-            .mods
-            .get(index)
-            .ok_or_else(|| Error::Invalid("Мод отсутствует в каталоге".into()))?;
+        let item = catalog.mods.get(index).ok_or_else(|| {
+            Error::Invalid(crate::message!(
+                "Mod is missing from the catalog",
+                "Мод отсутствует в каталоге"
+            ))
+        })?;
         if !names.insert(item.name.to_lowercase()) {
-            return Err(Error::Invalid(format!(
+            return Err(Error::Invalid(crate::message!(
+                "Two enabled mods have the same name: {}",
                 "Два включённых мода имеют имя {}",
                 item.name
             )));
         }
-        let parent = item
-            .path
-            .parent()
-            .ok_or_else(|| Error::Invalid("У мода нет папки".into()))?;
+        let parent = item.path.parent().ok_or_else(|| {
+            Error::Invalid(crate::message!(
+                "Mod has no parent folder",
+                "У мода нет папки"
+            ))
+        })?;
         if directories.insert(parent) {
             lines.push(format!(
                 "add_working_directory {};",
@@ -49,15 +57,19 @@ pub fn prepare(
     enabled: &HashSet<usize>,
 ) -> Result<()> {
     if !game.join("Warhammer3.exe").is_file() {
-        return Err(Error::Invalid("Выберите папку с Warhammer3.exe".into()));
+        return Err(Error::Invalid(crate::message!(
+            "Select the folder containing Warhammer3.exe",
+            "Выберите папку с Warhammer3.exe"
+        )));
     }
     for &index in enabled {
         let item = catalog
             .mods
             .get(index)
-            .ok_or_else(|| Error::Invalid("Мод отсутствует".into()))?;
+            .ok_or_else(|| Error::Invalid(crate::message!("Mod is missing", "Мод отсутствует")))?;
         if !item.path.is_file() {
-            return Err(Error::Invalid(format!(
+            return Err(Error::Invalid(crate::message!(
+                "Mod file not found: {}",
                 "Мод не найден: {}",
                 item.path.display()
             )));
@@ -65,7 +77,8 @@ pub fn prepare(
     }
     for (index, item) in catalog.mods.iter().enumerate() {
         if item.movie && item.source == crate::catalog::Source::Data && !enabled.contains(&index) {
-            return Err(Error::Invalid(format!(
+            return Err(Error::Invalid(crate::message!(
+                "{} is a movie pack in data and loads automatically. Move it out of data to disable it.",
                 "{} — movie pack в data: игра загружает его автоматически. Переместите файл из data, чтобы отключить.",
                 item.name
             )));
@@ -97,7 +110,8 @@ pub fn start(game: &Path) -> Result<()> {
 
 #[cfg(not(target_os = "windows"))]
 pub fn start(_: &Path) -> Result<()> {
-    Err(Error::Invalid(
-        "Запуск игры доступен в Windows-сборке".into(),
-    ))
+    Err(Error::Invalid(crate::message!(
+        "Launching the game requires the Windows build",
+        "Запуск игры доступен в Windows-сборке"
+    )))
 }

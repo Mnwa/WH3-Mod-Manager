@@ -12,7 +12,14 @@ impl Manager {
             files: true,
             directories: false,
             multiple: false,
-            prompt: Some("Метаданные или config.json оригинала".into()),
+            prompt: Some(
+                self.language
+                    .text(
+                        "Metadata file or original config.json",
+                        "Метаданные или config.json оригинала",
+                    )
+                    .into(),
+            ),
         });
         self.io_task = Some(cx.spawn(async move |this, cx| {
             if let Ok(Ok(Some(paths))) = prompt.await
@@ -35,12 +42,12 @@ impl Manager {
                                     else { this.settings.presets.push(preset); }
                                 }
                                 if let Some(preset) = bundle.current_preset { this.apply_preset(&preset, cx); }
-                                this.diagnostics.extend(bundle.warnings.into_iter().map(SharedString::from));
-                                this.status = format!("Мета импортирована · совпало модов: {matched}. Сохраните библиотеку.").into();
+                                this.diagnostics.extend(bundle.warnings.into_iter().map(metadata::warning_message));
+                                this.status = wh3_core::message!("Metadata imported · {matched} matching mods. Save the library.", "Мета импортирована · совпало модов: {matched}. Сохраните библиотеку.", matched = matched);
                                 this.dirty = true;
                                 this.refresh_query(cx);
                             }
-                            Err(error) => this.status = error.to_string().into(),
+                            Err(error) => this.status = error.message(),
                         }
                         cx.notify();
                     });
@@ -56,7 +63,14 @@ impl Manager {
             files: true,
             directories: false,
             multiple: false,
-            prompt: Some("Выберите config.json оригинального менеджера".into()),
+            prompt: Some(
+                self.language
+                    .text(
+                        "Select the original manager's config.json",
+                        "Выберите config.json оригинального менеджера",
+                    )
+                    .into(),
+            ),
         });
         self.io_task = Some(cx.spawn(async move |this, cx| {
             if let Ok(Ok(Some(paths))) = prompt.await
@@ -73,13 +87,13 @@ impl Manager {
                         .await;
                     let _ = this.update(cx, |this, cx| {
                         this.status = match result {
-                            Ok(bundle) => format!(
+                            Ok(bundle) => wh3_core::message!(
+                                "Original metadata exported: {} mods, {} presets",
                                 "Мета оригинала экспортирована: {} модов, {} пресетов",
                                 bundle.mods.len(),
                                 bundle.presets.len()
-                            )
-                            .into(),
-                            Err(error) => error.to_string().into(),
+                            ),
+                            Err(error) => error.message(),
                         };
                         cx.notify();
                     });

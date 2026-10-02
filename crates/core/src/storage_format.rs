@@ -1,5 +1,5 @@
 //! WHM1: magic(4) | payload_len(u32 LE) | CRC32(u32 LE) | rkyv record.
-//! Схема отделена от доменных типов: её изменение требует новой версии и миграции.
+//! The schema is separate from domain types; changes require a new version and migration.
 use crate::{
     Error, Result,
     catalog::Source,
@@ -72,7 +72,10 @@ struct RequiredRecord<'a> {
 }
 
 fn invalid() -> Error {
-    Error::Invalid("Повреждённое или неподдерживаемое бинарное хранилище WHM1".into())
+    Error::Invalid(crate::message!(
+        "Corrupt or unsupported WHM1 binary library",
+        "Повреждённое или неподдерживаемое бинарное хранилище WHM1"
+    ))
 }
 
 fn preset_record(preset: &Preset) -> Result<PresetRecord<'_>> {
@@ -99,8 +102,12 @@ fn preset_record(preset: &Preset) -> Result<PresetRecord<'_>> {
 
 pub(crate) fn encode(settings: &Settings) -> Result<Vec<u8>> {
     fn path_str(path: &std::path::Path) -> Result<&str> {
-        path.to_str()
-            .ok_or_else(|| Error::Invalid("Путь содержит невалидный Unicode".into()))
+        path.to_str().ok_or_else(|| {
+            Error::Invalid(crate::message!(
+                "Path contains invalid Unicode",
+                "Путь содержит невалидный Unicode"
+            ))
+        })
     }
     let record = StateRecord {
         game: settings.game_path.as_deref().map(path_str).transpose()?,
@@ -142,7 +149,7 @@ pub(crate) fn encode(settings: &Settings) -> Result<Vec<u8>> {
             })
             .collect(),
     };
-    // Строки заимствуются; сериализатор пишет прямо после заголовка без промежуточного JSON.
+    // Borrow strings and serialize directly after the header without intermediate JSON.
     let mut bytes = rkyv::api::high::to_bytes_in::<_, ArchiveError>(&record, vec![0; 12])
         .map_err(|_| invalid())?;
     if bytes.len() as u64 > MAX_FILE {

@@ -28,7 +28,7 @@ fn original_v3_export_is_portable_and_preserves_metadata_and_presets() {
         bundle
             .warnings
             .iter()
-            .any(|warning| warning.contains("правила"))
+            .any(|warning| warning.contains("rules"))
     );
 }
 

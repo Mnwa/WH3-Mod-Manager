@@ -7,6 +7,7 @@ fn main() {
         sync::Arc,
         time::{Duration, Instant},
     };
+    use wh3_core::localization::Language;
     use wh3_mod_manager::{manager::Manager, theme};
     let mut cx = HeadlessAppContext::with_platform(
         gpui_kit::platform::current_platform(true).text_system(),
@@ -65,6 +66,20 @@ fn main() {
         image.save(dir.join(format!("mods-{count}.png"))).unwrap();
         cx.update_window(window.into(), |_, window, cx| {
             window.render_frame(cx);
+            assert_eq!(window.find("all").label(), Some("All mods"));
+            window.click("language", cx);
+            assert_eq!(manager.read(cx).language(), Language::Russian);
+            assert_eq!(window.find("all").label(), Some("Все моды"));
+        })
+        .unwrap();
+        cx.capture_screenshot(window.into())
+            .unwrap()
+            .save(dir.join(format!("mods-{count}-ru.png")))
+            .unwrap();
+        cx.update_window(window.into(), |_, window, cx| {
+            window.click("language", cx);
+            assert_eq!(manager.read(cx).language(), Language::English);
+            assert_eq!(window.find("all").label(), Some("All mods"));
             window.click(("check", 0usize), cx);
             assert_eq!(window.find(("check", 0usize)).checked(), Some(true));
             window.click("enabled", cx);

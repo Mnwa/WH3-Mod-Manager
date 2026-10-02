@@ -12,7 +12,7 @@ use std::{
 
 pub struct Scan {
     pub catalog: Catalog,
-    pub warnings: Vec<String>,
+    pub warnings: Vec<crate::localization::Message>,
 }
 
 pub fn scan(roots: &[(PathBuf, Source)], cancelled: &AtomicBool) -> Result<Scan> {
@@ -29,7 +29,7 @@ pub fn scan(roots: &[(PathBuf, Source)], cancelled: &AtomicBool) -> Result<Scan>
             let canonical = match fs::canonicalize(&directory) {
                 Ok(path) => path,
                 Err(e) => {
-                    warnings.push(format!("{}: {e}", directory.display()));
+                    warnings.push(crate::error::io(&directory, e).message());
                     continue;
                 }
             };
@@ -39,7 +39,7 @@ pub fn scan(roots: &[(PathBuf, Source)], cancelled: &AtomicBool) -> Result<Scan>
             let entries = match fs::read_dir(&directory) {
                 Ok(entries) => entries,
                 Err(e) => {
-                    warnings.push(format!("{}: {e}", directory.display()));
+                    warnings.push(crate::error::io(&directory, e).message());
                     continue;
                 }
             };
@@ -50,7 +50,7 @@ pub fn scan(roots: &[(PathBuf, Source)], cancelled: &AtomicBool) -> Result<Scan>
                 let entry = match entry {
                     Ok(entry) => entry,
                     Err(e) => {
-                        warnings.push(e.to_string());
+                        warnings.push(crate::message!("File error: {}", "Ошибка файла: {}", e));
                         continue;
                     }
                 };
@@ -70,7 +70,7 @@ pub fn scan(roots: &[(PathBuf, Source)], cancelled: &AtomicBool) -> Result<Scan>
                 let canonical = match fs::canonicalize(&path) {
                     Ok(path) => path,
                     Err(e) => {
-                        warnings.push(e.to_string());
+                        warnings.push(crate::message!("File error: {}", "Ошибка файла: {}", e));
                         continue;
                     }
                 };
@@ -80,7 +80,7 @@ pub fn scan(roots: &[(PathBuf, Source)], cancelled: &AtomicBool) -> Result<Scan>
                 match read_mod(&path, *source) {
                     Ok(Some(item)) => mods.push(item),
                     Ok(None) => {}
-                    Err(e) => warnings.push(e.to_string()),
+                    Err(e) => warnings.push(e.message()),
                 }
             }
         }

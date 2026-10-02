@@ -29,7 +29,7 @@ pub struct PackedFile {
 fn word(bytes: &[u8], offset: usize) -> Result<u32> {
     let bytes = bytes
         .get(offset..offset + 4)
-        .ok_or_else(|| Error::Pack("обрезанное число".into()))?;
+        .ok_or_else(|| Error::Pack(crate::message!("truncated integer", "обрезанное число")))?;
     Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
 }
 
@@ -42,7 +42,8 @@ pub fn header(path: &Path) -> Result<Header> {
         b"PFH5" => 5,
         b"PFH4" => 4,
         _ => {
-            return Err(Error::Pack(format!(
+            return Err(Error::Pack(crate::message!(
+                "{}: only PFH4/PFH5 are supported",
                 "{}: поддерживаются PFH4/PFH5",
                 path.display()
             )));
@@ -54,7 +55,10 @@ pub fn header(path: &Path) -> Result<Header> {
     if dependency_size + u64::from(index_size) > MAX_INDEX
         || 28 + dependency_size + u64::from(index_size) > pack_size
     {
-        return Err(Error::Pack("размер индекса вне допустимых границ".into()));
+        return Err(Error::Pack(crate::message!(
+            "index size is out of bounds",
+            "размер индекса вне допустимых границ"
+        )));
     }
     let mut dependencies = vec![0; dependency_size as usize];
     file.read_exact(&mut dependencies)
@@ -62,15 +66,20 @@ pub fn header(path: &Path) -> Result<Header> {
     let mut names = Vec::new();
     let mut remaining = dependencies.as_slice();
     for _ in 0..dependency_count {
-        let end = remaining
-            .iter()
-            .position(|&b| b == 0)
-            .ok_or_else(|| Error::Pack("обрезанная зависимость".into()))?;
+        let end = remaining.iter().position(|&b| b == 0).ok_or_else(|| {
+            Error::Pack(crate::message!(
+                "truncated dependency",
+                "обрезанная зависимость"
+            ))
+        })?;
         names.push(String::from_utf8_lossy(&remaining[..end]).into_owned());
         remaining = &remaining[end + 1..];
     }
     if !remaining.is_empty() {
-        return Err(Error::Pack("лишние данные в зависимостях".into()));
+        return Err(Error::Pack(crate::message!(
+            "trailing dependency data",
+            "лишние данные в зависимостях"
+        )));
     }
     Ok(Header {
         version,
@@ -95,7 +104,10 @@ pub fn index(path: &Path) -> Result<Vec<PackedFile>> {
 
 pub fn parse_index(header: &Header, bytes: &[u8]) -> Result<Vec<PackedFile>> {
     if bytes.len() != header.index_size as usize || header.file_count as usize > bytes.len() / 5 {
-        return Err(Error::Pack("неверное количество записей".into()));
+        return Err(Error::Pack(crate::message!(
+            "invalid entry count",
+            "неверное количество записей"
+        )));
     }
     let mut entries = Vec::with_capacity(header.file_count as usize);
     let mut position = 0;
@@ -107,18 +119,24 @@ pub fn parse_index(header: &Header, bytes: &[u8]) -> Result<Vec<PackedFile>> {
             word(bytes, position)?;
             position += 4;
         }
-        // PFH4 хранит timestamp при установленном бите 0x40.
+        // PFH4 stores a timestamp when bit 0x40 is set.
         if header.version == 4 && header.flags & 0x40 != 0 {
             word(bytes, position)?;
             position += 4;
         }
         let compressed = if header.version == 5 {
-            let flag = *bytes
-                .get(position)
-                .ok_or_else(|| Error::Pack("нет флага сжатия".into()))?;
+            let flag = *bytes.get(position).ok_or_else(|| {
+                Error::Pack(crate::message!(
+                    "missing compression flag",
+                    "нет флага сжатия"
+                ))
+            })?;
             position += 1;
             if flag > 1 {
-                return Err(Error::Pack("неверный флаг сжатия".into()));
+                return Err(Error::Pack(crate::message!(
+                    "invalid compression flag",
+                    "неверный флаг сжатия"
+                )));
             }
             flag == 1
         } else {
@@ -126,18 +144,20 @@ pub fn parse_index(header: &Header, bytes: &[u8]) -> Result<Vec<PackedFile>> {
         };
         let rest = bytes
             .get(position..)
-            .ok_or_else(|| Error::Pack("обрезанное имя".into()))?;
-        let end = rest
-            .iter()
-            .position(|&b| b == 0)
-            .ok_or_else(|| Error::Pack("незавершённое имя".into()))?;
+            .ok_or_else(|| Error::Pack(crate::message!("truncated name", "обрезанное имя")))?;
+        let end = rest.iter().position(|&b| b == 0).ok_or_else(|| {
+            Error::Pack(crate::message!("unterminated name", "незавершённое имя"))
+        })?;
         let name = String::from_utf8_lossy(&rest[..end]).into_owned();
         position += end + 1;
         let next = offset
             .checked_add(u64::from(size))
-            .ok_or_else(|| Error::Pack("переполнение размера".into()))?;
+            .ok_or_else(|| Error::Pack(crate::message!("size overflow", "переполнение размера")))?;
         if next > header.pack_size {
-            return Err(Error::Pack("файл выходит за границы pack".into()));
+            return Err(Error::Pack(crate::message!(
+                "file extends beyond pack bounds",
+                "файл выходит за границы pack"
+            )));
         }
         entries.push(PackedFile {
             name,
@@ -148,7 +168,10 @@ pub fn parse_index(header: &Header, bytes: &[u8]) -> Result<Vec<PackedFile>> {
         offset = next;
     }
     if position != bytes.len() {
-        return Err(Error::Pack("лишние данные в индексе".into()));
+        return Err(Error::Pack(crate::message!(
+            "trailing index data",
+            "лишние данные в индексе"
+        )));
     }
     Ok(entries)
 }

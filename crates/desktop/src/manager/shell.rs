@@ -28,36 +28,66 @@ impl Manager {
                     .child("WH3 / MOD MANAGER"),
             )
             .child(
-                button("game-folder", "Папка игры", !self.busy && !self.demo)
-                    .on_click(cx.listener(|this, _, _, cx| this.choose_directory(true, cx))),
+                button(
+                    "game-folder",
+                    self.language.text("Game folder", "Папка игры"),
+                    !self.busy && !self.demo,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.choose_directory(true, cx))),
             )
             .child(
-                button("add-folder", "+ Папка модов", !self.busy && !self.demo)
-                    .on_click(cx.listener(|this, _, _, cx| this.choose_directory(false, cx))),
+                button(
+                    "add-folder",
+                    self.language.text("+ Mod folder", "+ Папка модов"),
+                    !self.busy && !self.demo,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.choose_directory(false, cx))),
             )
             .child(
-                button("rescan", "Обновить", !self.busy && !self.demo)
-                    .on_click(cx.listener(|this, _, _, cx| this.rescan(cx))),
+                button(
+                    "rescan",
+                    self.language.text("Refresh", "Обновить"),
+                    !self.busy && !self.demo,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.rescan(cx))),
             )
             .child(div().flex_1())
+            .child(
+                button(
+                    "language",
+                    self.language.text("Русский", "English"),
+                    !self.preferences_busy,
+                )
+                .tooltip(
+                    self.language
+                        .text("Switch to Russian", "Переключить на английский"),
+                )
+                .on_click(cx.listener(|this, _, window, cx| this.change_language(window, cx))),
+            )
             .when(self.cancellable, |bar| {
-                bar.child(button("cancel", "Отменить", true).on_click(cx.listener(
-                    |this, _, _, cx| {
-                        this.cancel
-                            .store(true, std::sync::atomic::Ordering::Relaxed);
-                        this.status = "Отмена операции…".into();
-                        cx.notify();
-                    },
-                )))
+                bar.child(
+                    button("cancel", self.language.text("Cancel", "Отменить"), true).on_click(
+                        cx.listener(|this, _, _, cx| {
+                            this.cancel
+                                .store(true, std::sync::atomic::Ordering::Relaxed);
+                            this.status = wh3_core::message!("Cancelling…", "Отмена операции…");
+                            cx.notify();
+                        }),
+                    ),
+                )
             })
             .child(
-                button("save", "Сохранить", !self.busy && !self.demo && self.dirty)
-                    .on_click(cx.listener(|this, _, _, cx| this.save(cx))),
+                button(
+                    "save",
+                    self.language.text("Save", "Сохранить"),
+                    !self.busy && !self.demo && self.dirty,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.save(cx))),
             )
             .child(
                 button(
                     "play",
-                    "Играть",
+                    self.language.text("Play", "Играть"),
                     !self.busy && !self.demo && self.settings.game_path.is_some() && cfg!(windows),
                 )
                 .primary()
@@ -82,13 +112,25 @@ impl Manager {
                     .text_xs()
                     .text_color(theme::muted())
                     .mb_2()
-                    .child("БИБЛИОТЕКА"),
+                    .child(self.language.text("LIBRARY", "БИБЛИОТЕКА")),
             )
             .children(
                 [
-                    (Filter::All, "all", "Все моды"),
-                    (Filter::Enabled, "enabled", "Включённые"),
-                    (Filter::Disabled, "disabled", "Отключённые"),
+                    (
+                        Filter::All,
+                        "all",
+                        self.language.text("All mods", "Все моды"),
+                    ),
+                    (
+                        Filter::Enabled,
+                        "enabled",
+                        self.language.text("Enabled", "Включённые"),
+                    ),
+                    (
+                        Filter::Disabled,
+                        "disabled",
+                        self.language.text("Disabled", "Отключённые"),
+                    ),
                 ]
                 .map(|(filter, id, label)| {
                     button(id, label, true)
@@ -106,14 +148,28 @@ impl Manager {
                     .flex()
                     .gap_2()
                     .child(
-                        button("enable-visible", "Включить", available)
-                            .tooltip("Включить все моды текущего результата поиска")
-                            .on_click(cx.listener(|this, _, _, cx| this.bulk_toggle(true, cx))),
+                        button(
+                            "enable-visible",
+                            self.language.text("Enable", "Включить"),
+                            available,
+                        )
+                        .tooltip(self.language.text(
+                            "Enable all mods in the current search results",
+                            "Включить все моды текущего результата поиска",
+                        ))
+                        .on_click(cx.listener(|this, _, _, cx| this.bulk_toggle(true, cx))),
                     )
                     .child(
-                        button("disable-visible", "Отключить", available)
-                            .tooltip("Отключить все моды текущего результата поиска")
-                            .on_click(cx.listener(|this, _, _, cx| this.bulk_toggle(false, cx))),
+                        button(
+                            "disable-visible",
+                            self.language.text("Disable", "Отключить"),
+                            available,
+                        )
+                        .tooltip(self.language.text(
+                            "Disable all mods in the current search results",
+                            "Отключить все моды текущего результата поиска",
+                        ))
+                        .on_click(cx.listener(|this, _, _, cx| this.bulk_toggle(false, cx))),
                     ),
             )
             .child(
@@ -122,33 +178,46 @@ impl Manager {
                     .mb_2()
                     .text_xs()
                     .text_color(theme::muted())
-                    .child("ПРЕСЕТЫ"),
+                    .child(self.language.text("PRESETS", "ПРЕСЕТЫ")),
             )
             .child(Input::new(&self.preset_name).small())
             .child(
-                button("save-preset", "Сохранить пресет", available)
-                    .on_click(cx.listener(|this, _, _, cx| this.save_preset(cx))),
+                button(
+                    "save-preset",
+                    self.language.text("Save preset", "Сохранить пресет"),
+                    available,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.save_preset(cx))),
             )
             .child(
                 div()
                     .flex()
                     .gap_2()
                     .child(
-                        button("import", "Импорт", available)
+                        button("import", self.language.text("Import", "Импорт"), available)
                             .on_click(cx.listener(|this, _, _, cx| this.import(cx))),
                     )
                     .child(
-                        button("export", "Экспорт", available)
+                        button("export", self.language.text("Export", "Экспорт"), available)
                             .on_click(cx.listener(|this, _, _, cx| this.export(cx))),
                     ),
             )
             .child(
-                button("import-meta", "Импорт метаданных", available)
-                    .on_click(cx.listener(|this, _, _, cx| this.import_metadata(cx))),
+                button(
+                    "import-meta",
+                    self.language.text("Import metadata", "Импорт метаданных"),
+                    available,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.import_metadata(cx))),
             )
             .child(
-                button("export-original-meta", "Мета из оригинала…", available)
-                    .on_click(cx.listener(|this, _, _, cx| this.export_original_metadata(cx))),
+                button(
+                    "export-original-meta",
+                    self.language
+                        .text("Original metadata…", "Мета из оригинала…"),
+                    available,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.export_original_metadata(cx))),
             )
             .child(
                 uniform_list(
@@ -188,77 +257,5 @@ impl Manager {
                     .child("Warhammer III · Steam")
                     .child(div().mt_1().child("Rust / GPUI")),
             )
-    }
-
-    pub(super) fn selection_bar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        div()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .p_3()
-            .border_t_1()
-            .border_color(theme::border())
-            .bg(theme::panel())
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        button("up", "↑ Выше", !self.busy && self.selected.is_some())
-                            .on_click(cx.listener(|this, _, _, cx| this.move_selected(-1, cx))),
-                    )
-                    .child(
-                        button("down", "↓ Ниже", !self.busy && self.selected.is_some())
-                            .on_click(cx.listener(|this, _, _, cx| this.move_selected(1, cx))),
-                    )
-                    .child(
-                        button(
-                            "inspect",
-                            "Файлы pack",
-                            !self.busy && self.selected.is_some() && !self.demo,
-                        )
-                        .on_click(cx.listener(|this, _, _, cx| this.inspect(cx))),
-                    )
-                    .child(
-                        button(
-                            "workshop",
-                            "Workshop",
-                            self.selected
-                                .is_some_and(|i| !self.catalog.mods[i].workshop_id.is_empty())
-                                && !self.demo,
-                        )
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            if let Some(i) = this.selected {
-                                cx.open_url(&format!(
-                                    "https://steamcommunity.com/sharedfiles/filedetails/?id={}",
-                                    this.catalog.mods[i].workshop_id
-                                ));
-                            }
-                        })),
-                    )
-                    .child(div().flex_1())
-                    .child(button("report", "Отчёт", true).on_click(cx.listener(
-                        |this, _, _, cx| {
-                            this.show_report = !this.show_report;
-                            cx.notify();
-                        },
-                    ))),
-            )
-            .when_some(self.selected, |bar, index| {
-                let item = &self.catalog.mods[index];
-                bar.child(
-                    div()
-                        .text_xs()
-                        .text_color(theme::muted())
-                        .truncate()
-                        .child(format!(
-                            "{} · {} · {}",
-                            item.path.display(),
-                            item.metadata.author,
-                            item.metadata.categories.join(", ")
-                        )),
-                )
-            })
     }
 }

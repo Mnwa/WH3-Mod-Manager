@@ -7952,6 +7952,7 @@ name = "wh3-mod-manager"
 version = "0.1.0"
 dependencies = [
  "gpui-kit",
+ "rust-i18n",
  "serde_json",
  "wh3-core",
 ]

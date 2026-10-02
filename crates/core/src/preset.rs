@@ -44,7 +44,10 @@ impl Preset {
             vec![serde_json::from_value(value)?]
         };
         if presets.iter().any(|preset| preset.name.trim().is_empty()) {
-            return Err(Error::Invalid("У пресета отсутствует имя".into()));
+            return Err(Error::Invalid(crate::message!(
+                "Preset name is missing",
+                "У пресета отсутствует имя"
+            )));
         }
         Ok(presets)
     }
@@ -106,7 +109,7 @@ impl Preset {
         if self.version.is_some() {
             return self.mods.iter().collect();
         }
-        // До version=2 оригинал сортировал имена и вставлял закреплённые позиции.
+        // Before version 2, the original sorted names and inserted pinned positions.
         let mut sorted: Vec<_> = self.mods.iter().collect();
         sorted.sort_by_cached_key(|entry| entry.name.to_lowercase());
         let (mut pinned, unpinned): (Vec<_>, Vec<_>) = sorted

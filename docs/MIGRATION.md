@@ -1,59 +1,64 @@
-# Статус переноса
+# Migration status
 
-Объём первого этапа согласован: сначала менеджер модов, затем остальные инструменты.
-Исходник: Shazbot/WH3-Mod-Manager, commit `083c7e2a570991227eda0d071611e85d73d345f8`.
-Это самостоятельная Rust-версия; Electron-приложение не включено в поставку.
+The agreed first stage covers the mod manager; the original application's other
+tools are later work. Reference: Shazbot/WH3-Mod-Manager, commit
+`083c7e2a570991227eda0d071611e85d73d345f8`.
+This is a standalone Rust application; Electron is not included in the distribution.
 
-| Возможность | Состояние Rust-версии |
+| Capability | Rust implementation |
 |---|---|
-| Список модов | Нативный GPUI; виртуальные строки фиксированной высоты, без WebView |
-| Большие библиотеки | Синтетические тесты 1k/10k/100k, фоновые сканирование и поиск |
-| Поиск | Unicode без учёта регистра; несколько слов; название, файл, ID, автор, категории, теги |
-| Включение/отключение | Флажки и массовое включение/отключение найденных; фильтры всех/включённых/отключённых |
-| Порядок загрузки | Сдвиг выбранного мода кнопками и Alt+стрелками; сохраняется в пресетах |
-| Сортировка | Переключение между порядком загрузки и названием; порядок запуска не изменяется |
-| Пресеты | Создание/обновление по имени, применение, JSON импорт/экспорт |
-| Старые пресеты | Полные записи Mod и компактные entries; старые sparse loadOrder восстанавливаются по именам и позициям |
-| Недостающие моды | Отчёт при применении пресета; автоматической подписки пока нет |
-| Мета оригинала | Экспортёр `wh3-meta`, GUI экспорт из config, импорт v3 games.wh3 и старых конфигураций |
-| Названия, авторы, категории, теги | Импортируются, сохраняются бинарно и участвуют в поиске; редактор категорий ещё не перенесён |
-| Дисковое хранение | rkyv WHM1, versioned schema, bytecheck, CRC32, атомарная замена, предыдущая копия |
-| Steam-библиотеки | Автопоиск стандартных Steam-путей и libraryfolders.vdf; папки можно выбрать вручную |
-| Сканирование | Data и Workshop, дополнительные папки, защита от циклов/дубликатов путей, ошибки отдельных файлов в отчёте |
-| Pack-файлы | Чтение заголовка и индекса PFH4/PFH5, в том числе hashed-name PFH5; payload не загружается |
-| Просмотр pack | Виртуальный список имён, размеров и признака сжатия файлов |
-| Конфликты | Совпадающие пути файлов и отсутствующие pack-зависимости; это не полный анализ совместимости |
-| Workshop | Открытие страницы мода; загрузки, обновления и подписки через Steamworks ещё не перенесены |
-| Запуск WH3 | Windows, прямой запуск Warhammer3.exe с отдельным списком; реальный запуск игры ещё требует проверки |
-| Сборка | Workflow проверок и Windows x64 release exe + CLI, без сертификата подписи |
+| Mod list | Native GPUI with virtualized, fixed-height rows; no WebView |
+| Large libraries | Synthetic 1k/10k/100k tests; background scanning and search |
+| Search | Unicode case-insensitive, multiple terms; title, file, ID, author, categories and tags |
+| Enable/disable | Checkboxes, bulk actions on search results, all/enabled/disabled filters |
+| Load order | Move the selected mod with buttons or Alt+arrows; persisted in presets |
+| Sorting | Load-order/name view toggle, independent of launch order |
+| Presets | Create/update by name, apply, JSON import/export |
+| Legacy presets | Full Mod records and compact entries; old sparse loadOrder reconstructed from names and pinned positions |
+| Missing mods | Report on preset application; automatic subscription is not implemented |
+| Original metadata | `wh3-meta` CLI, GUI export from config, import of v3 games.wh3 and legacy configurations |
+| Titles, authors, categories, tags | Imported, stored in binary format and searchable; category editing remains unported |
+| Persistence | rkyv WHM1, versioned schema, bytecheck, CRC32, atomic replacement and previous-generation backup |
+| Languages | English/Russian switch, persisted binary preference, translated labels, reports, errors and edit menus |
+| Steam libraries | Standard paths and libraryfolders.vdf discovery; manual folder selection |
+| Scanning | Data, Workshop and custom folders; cycle/path deduplication; per-file error report |
+| Pack files | PFH4/PFH5 headers/indexes, including hashed-name PFH5; payloads are not loaded |
+| Pack inspection | Virtualized file names, sizes and compression flags |
+| Conflicts | Overlapping file paths and missing pack dependencies; not a complete compatibility analysis |
+| Workshop | Open a mod's page; Steamworks downloads, updates and subscriptions remain unported |
+| WH3 launch | Windows, direct Warhammer3.exe launch with a separate list; real-game verification remains outstanding |
+| Builds | Quality workflow and Windows x64 release GUI/CLI executables, unsigned |
 
-## Ограничения первого этапа
+## First-stage limitations
 
-- Поддерживается WH3/Steam. Другие Total War, Linux/Proton-запуск и macOS-запуск игры не перенесены.
-- Нет DB/LOC-редактора, редактора pack, слияния модов, таблиц совместимости, анализа DB-ссылок,
-  игровых viewers (юниты, здания, навыки, карты), node flows и кастомизации игровых сущностей.
-- Нет skip-intro/script-logging и генерируемых для этих опций packs.
-- Нет multi-selection, drag-and-drop, dual-pane, контекстных меню, изменения ширины колонок,
-  миниатюр, редактирования категорий, удаления пресетов и автоматического слежения за папками.
-- Нет автоматических before/after-правил загрузки. Экспорт меты сохраняет исходные правила
-  в JSON и предупреждает, что они не применены. Проверьте ручной порядок перед запуском.
-- Несколько установленных packs с одним именем показываются отдельно, но пресеты оригинала
-  связываются по имени. Применяется первая найденная копия; запуск двух включённых одноимённых
-  packs отклоняется. При переносе проверьте выбранные пути.
-- Старые пресеты без версии сортируются по имени без учёта регистра. Для не-ASCII имён
-  порядок может отличаться от `Intl.Collator("en")` оригинала.
-- Movie pack в `data` игра загружает автоматически. Если он отключён в интерфейсе,
-  запуск блокируется с пояснением; менеджер сам не удаляет и не перемещает его.
-- Индекс ограничен 128 МБ; PFH3/PFH6 не поддерживаются. Неподдерживаемые/повреждённые packs
-  попадают в отчёт. Просмотр содержимого сжатых файлов пока не реализован.
-- Мета экспортируется из сохранённого config, не из оперативной памяти Electron. В v3
-  оригинал обычно сохраняет title/author/categories/requirements; Workshop ID и tags
-  переносятся, только если присутствуют в старой полной записи. ID также читается из Workshop-пути.
-- Проверка конфликтов не определяет победителя DB-строк и не доказывает совместимость модов.
+- WH3/Steam is supported. Other Total War games and game launch through Linux/Proton
+  or macOS are not ported.
+- No DB/LOC editor, pack editor, mod merging, compatibility tables, DB-reference
+  analysis, game viewers (units, buildings, skills, maps), node flows or game-entity customization.
+- No skip-intro/script-logging options or packs generated for those options.
+- No multi-selection, drag-and-drop, dual panes, mod context menus, resizable columns,
+  thumbnails, category editing, preset deletion or automatic folder watching.
+- Automatic before/after load-order rules are not applied. Metadata export preserves
+  these rules in JSON and includes a warning. Review the manual order before launching.
+- Packs with identical names are displayed separately, but original presets bind by
+  name. The first discovered copy is selected; launching two enabled packs with the
+  same name is rejected. Review the chosen paths after migration.
+- Legacy presets without a version use case-insensitive name sorting. Non-ASCII
+  ordering can differ from the original `Intl.Collator("en")` behavior.
+- The game automatically loads movie packs in `data`. If one is disabled in the UI,
+  launch is blocked with an explanation. The manager does not remove or move it.
+- Indexes are limited to 128 MiB; PFH3/PFH6 are unsupported. Unsupported or damaged
+  packs appear in the report. Viewing compressed file contents is not implemented.
+- Metadata comes from saved configuration, not Electron's in-memory state. Original
+  v3 usually saves title/author/categories/requirements; Workshop IDs and tags are
+  copied only when present in a legacy full record. IDs can also come from Workshop paths.
+- Conflict checking does not resolve DB-row winners or prove mod compatibility.
+- Native file picker controls and OS diagnostic details follow the system locale.
+  Imported names and third-party warnings are preserved verbatim.
 
-## Следующие этапы
+## Next stages
 
-1. Проверка Windows на реальной библиотеке и запуске WH3; Steamworks и обновление метаданных.
-2. Multi-selection, категории, dual-pane и остальные взаимодействия списка.
-3. Правила порядка, анализ DB-конфликтов и зависимостей.
-4. Pack/DB/LOC-редактор и игровые инструменты оригинала.
+1. Verify a real Windows library and WH3 launch; add Steamworks and metadata refresh.
+2. Add multi-selection, category editing, dual panes and remaining list interactions.
+3. Add load-order rules, DB-conflict analysis and dependencies.
+4. Port the original pack/DB/LOC editors and game tools.
