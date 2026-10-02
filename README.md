@@ -84,6 +84,37 @@ then builds a Windows x64 release. The `WH3-Mod-Manager-windows-x64` artifact co
 the GUI executable, `wh3-meta.exe`, a distribution ZIP and SHA-256 checksums.
 Executables are unsigned.
 
+## Tagged releases
+
+The separate `.github/workflows/release.yml` runs on a pushed `v*` tag or a published
+GitHub Release. It checks out that exact tag, sets the workspace and first-party
+lockfile versions from it, runs Windows quality checks, and builds with latest stable
+Rust. Dependency versions stay locked. Use SemVer tags such as `v0.1.0` or `v0.2.0-rc.1`.
+
+The workflow retains an Actions artifact and attaches these files to the tag's Release:
+
+- `wh3-mod-manager.exe` and `wh3-meta.exe` (Windows x64).
+- `WH3-Mod-Manager-<tag>-windows-x64.zip` with documentation and the license.
+- `SHA256SUMS.txt` covering both executables and the ZIP.
+
+If no Release exists, the workflow creates one with generated notes. Prerelease tags
+create prereleases. Reruns replace matching assets while preserving existing release
+notes. Publishing uses the built-in `GITHUB_TOKEN`; no additional secret is needed.
+The tag must point to a commit containing the release workflow and scripts.
+
+For a manual rebuild of an existing tag:
+
+```sh
+gh workflow run release.yml -f tag=v0.1.0
+# Validate a build without publishing or replacing release assets:
+gh workflow run release.yml -f tag=v0.1.0 -f publish=false
+```
+
+Manual dispatch becomes available once the workflow is on the default branch. A tag
+push and a separately published Release can each queue a run; uploads for the same
+tag are serialized. Releases created by this workflow's token do not recursively
+trigger another run.
+
 ## Repository layout
 
 - `crates/core`: catalog, Steam paths, pack indexes, presets, metadata, binary persistence and launch logic.

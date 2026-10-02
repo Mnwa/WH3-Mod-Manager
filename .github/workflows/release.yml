@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag (for example v0.1.0)'
+        required: true
+        type: string
+      publish:
+        description: 'Attach files to GitHub Release (disable to build artifacts only)'
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+# Serialize uploads when a tag push and release publication arrive together.
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+
+jobs:
+  windows:
+    name: Build Windows x64
+    runs-on: windows-2025
+    env:
+      RUSTFLAGS: -C target-feature=+crt-static
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+          persist-credentials: false
+      - name: Install latest stable Rust
+        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy --target x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: Set package versions from the tag
+        run: python .github/scripts/set-release-version.py
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+      - run: cargo build --workspace --release --locked --target x86_64-pc-windows-msvc
+      - name: Package executables
+        shell: pwsh
+        run: ./.github/scripts/package-windows.ps1 -Tag $env:RELEASE_TAG
+      - name: Upload release artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: WH3-Mod-Manager-windows-x64
+          path: dist/assets/*
+          if-no-files-found: error
+
+  publish:
+    name: Attach assets to GitHub Release
+    needs: windows
+    if: github.event_name != 'workflow_dispatch' || inputs.publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: WH3-Mod-Manager-windows-x64
+          path: assets
+      - name: Verify checksums
+        working-directory: assets
+        run: sha256sum --check SHA256SUMS.txt
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" assets/* --clobber
+          else
+            options=(--verify-tag --generate-notes --title "$RELEASE_TAG")
+            version="${RELEASE_TAG#v}"
+            if [[ "${version%%+*}" == *-* ]]; then
+              options+=(--prerelease)
+            fi
+            gh release create "$RELEASE_TAG" assets/* "${options[@]}"
+          fi
