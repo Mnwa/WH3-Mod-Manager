@@ -51,6 +51,7 @@ fn main() {
                 "virtualization: {count} mods rendered {rows} rows"
             );
         }
+        println!("frame_samples_ms({count})={samples:?}");
         samples.sort_by(f64::total_cmp);
         println!(
             "mods={count} frame_p50_ms={:.3} frame_p95_ms={:.3}",

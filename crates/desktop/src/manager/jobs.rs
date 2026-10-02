@@ -290,6 +290,10 @@ impl Manager {
             });
             if succeeded {
                 let _ = cx.update_window(handle, |_, window, _| window.remove_window());
+            } else if let Ok(prompt) = cx.update_window(handle, |_, window, cx| {
+                window.prompt(PromptLevel::Warning, "Не удалось сохранить библиотеку", Some("Можно остаться и исправить ошибку или закрыть окно без сохранения последних изменений."), &["Остаться", "Закрыть без сохранения"], cx)
+            }) && prompt.await == Ok(1) {
+                let _ = cx.update_window(handle, |_, window, _| window.remove_window());
             }
         }));
         false

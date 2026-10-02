@@ -14,6 +14,7 @@ fn main() {
             black_box(catalog.query(black_box("кислев 00"), &order));
             times.push(start.elapsed().as_secs_f64() * 1000.);
         }
+        println!("query_samples_ms({count})={times:?}");
         times.sort_by(f64::total_cmp);
         println!("{count},{build:.3},{:.3},{:.3}", times[50], times[95]);
     }

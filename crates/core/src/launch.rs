@@ -80,7 +80,7 @@ pub fn prepare(
 #[cfg(target_os = "windows")]
 pub fn start(game: &Path) -> Result<()> {
     use std::os::windows::process::CommandExt;
-    std::process::Command::new(game.join("Warhammer3.exe"))
+    let mut child = std::process::Command::new(game.join("Warhammer3.exe"))
         .current_dir(game)
         .arg(format!("{MOD_LIST};"))
         .creation_flags(0x00000008)
@@ -89,6 +89,9 @@ pub fn start(game: &Path) -> Result<()> {
         .stderr(std::process::Stdio::null())
         .spawn()
         .map_err(|e| crate::error::io(game, e))?;
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
     Ok(())
 }
 

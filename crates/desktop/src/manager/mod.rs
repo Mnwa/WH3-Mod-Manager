@@ -58,3 +58,5 @@ impl Drop for Manager {
 
 mod list;
 mod shell;
+
+mod presets;

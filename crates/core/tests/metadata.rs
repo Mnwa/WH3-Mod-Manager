@@ -42,6 +42,13 @@ fn legacy_per_game_metadata_uses_current_title_and_keeps_snapshot_fields() {
 }
 
 #[test]
+fn current_metadata_can_explicitly_clear_legacy_categories() {
+    let json = br#"{"currentPreset":{"name":"current","mods":[{"name":"a.pack","categories":[]}]},"presets":[{"name":"old","mods":[{"name":"a.pack","categories":["old"]}]}]}"#;
+    let bundle = metadata::Bundle::parse(json).unwrap();
+    assert!(bundle.mods["a.pack"].categories.is_empty());
+}
+
+#[test]
 fn binary_library_roundtrips_metadata_and_keeps_previous_generation() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("library.whmm");

@@ -81,7 +81,7 @@ impl Bundle {
         if let Some(user_data) = game.get("modUserData").and_then(Value::as_object) {
             for (name, value) in user_data {
                 let data: Metadata = serde_json::from_value(value.clone())?;
-                merge(mods.entry(name.clone()).or_default(), data);
+                merge(mods.entry(name.clone()).or_default(), data, value);
             }
         }
         let presets: Vec<Preset> = presets
@@ -119,14 +119,14 @@ fn collect_full_mods(preset: &Value, mods: &mut BTreeMap<String, Metadata>) -> R
         for entry in entries {
             if let Some(name) = entry.get("name").and_then(Value::as_str) {
                 let data = serde_json::from_value(entry.clone())?;
-                merge(mods.entry(name.to_owned()).or_default(), data);
+                merge(mods.entry(name.to_owned()).or_default(), data, entry);
             }
         }
     }
     Ok(())
 }
 
-fn merge(target: &mut Metadata, source: Metadata) {
+fn merge(target: &mut Metadata, source: Metadata, original: &Value) {
     if !source.human_name.is_empty() {
         target.human_name = source.human_name;
     }
@@ -136,10 +136,10 @@ fn merge(target: &mut Metadata, source: Metadata) {
     if !source.workshop_id.is_empty() {
         target.workshop_id = source.workshop_id;
     }
-    if !source.categories.is_empty() {
+    if original.get("categories").is_some() {
         target.categories = source.categories;
     }
-    if !source.tags.is_empty() {
+    if original.get("tags").is_some() {
         target.tags = source.tags;
     }
     if !source.req_mod_id_to_name.is_empty() {
