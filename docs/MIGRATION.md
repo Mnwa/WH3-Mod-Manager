@@ -27,7 +27,7 @@ This is a standalone Rust application; Electron is not included in the distribut
 | Conflicts | Overlapping file paths and missing pack dependencies; not a complete compatibility analysis |
 | Workshop | Open a mod's page; Steamworks downloads, updates and subscriptions remain unported |
 | WH3 launch | Windows, direct Warhammer3.exe launch with a separate list; real-game verification remains outstanding |
-| Builds | Quality workflow plus tag-driven Windows x64 release workflow; GUI/CLI exe, ZIP and checksums retained as artifacts and attached to GitHub Release; unsigned |
+| Builds | `ci.yml` checks quality on main pushes/PRs; `release.yml` builds Windows x64 assets from an existing published GitHub Release and attaches exe, ZIP and checksums; unsigned |
 
 ## First-stage limitations
 

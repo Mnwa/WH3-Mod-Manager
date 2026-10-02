@@ -79,41 +79,38 @@ On macOS, the `visual` test uses the real Metal renderer, writes screenshots int
 `target/visual`, checks both interface languages and validates virtualization with
 1,000 / 10,000 / 100,000 mods. This specific test is explicitly skipped elsewhere.
 
-GitHub Actions checks the core on Linux and the entire workspace on Windows/macOS,
-then builds a Windows x64 release. The `WH3-Mod-Manager-windows-x64` artifact contains
-the GUI executable, `wh3-meta.exe`, a distribution ZIP and SHA-256 checksums.
-Executables are unsigned.
+There are two GitHub Actions workflows:
 
-## Tagged releases
+- `ci.yml` runs on pushes to `main` and pull requests targeting `main`. It checks
+  formatting, Clippy, tests, release-version handling and performance/visual results
+  on Linux, Windows and macOS. It does not package application releases.
+- `release.yml` runs when a GitHub Release is published. It reads that existing
+  release, checks out its exact tag and builds the Windows x64 executables with the
+  latest stable Rust. Package versions come from the SemVer tag (for example
+  `v0.1.0`); dependency versions remain locked.
 
-The separate `.github/workflows/release.yml` runs on a pushed `v*` tag or a published
-GitHub Release. It checks out that exact tag, sets the workspace and first-party
-lockfile versions from it, runs Windows quality checks, and builds with latest stable
-Rust. Dependency versions stay locked. Use SemVer tags such as `v0.1.0` or `v0.2.0-rc.1`.
+## Publishing a release
 
-The workflow retains an Actions artifact and attaches these files to the tag's Release:
+Publish a GitHub Release whose tag points to a commit containing `release.yml` and
+its scripts. The workflow builds and retains an Actions artifact, then attaches these
+files to the same release:
 
-- `wh3-mod-manager.exe` and `wh3-meta.exe` (Windows x64).
+- `wh3-mod-manager.exe` and `wh3-meta.exe` (Windows x64, unsigned).
 - `WH3-Mod-Manager-<tag>-windows-x64.zip` with documentation and the license.
 - `SHA256SUMS.txt` covering both executables and the ZIP.
 
-If no Release exists, the workflow creates one with generated notes. Prerelease tags
-create prereleases. Reruns replace matching assets while preserving existing release
-notes. Publishing uses the built-in `GITHUB_TOKEN`; no additional secret is needed.
-The tag must point to a commit containing the release workflow and scripts.
+Reruns replace matching assets while preserving the release's title, notes and
+prerelease status. The workflow requires an existing published release and never
+creates one. Upload uses the built-in `GITHUB_TOKEN`; no additional secret is needed.
 
-For a manual rebuild of an existing tag:
+To rebuild an existing published release manually:
 
 ```sh
 gh workflow run release.yml -f tag=v0.1.0
-# Validate a build without publishing or replacing release assets:
-gh workflow run release.yml -f tag=v0.1.0 -f publish=false
 ```
 
-Manual dispatch becomes available once the workflow is on the default branch. A tag
-push and a separately published Release can each queue a run; uploads for the same
-tag are serialized. Releases created by this workflow's token do not recursively
-trigger another run.
+Manual dispatch is available once the workflow is on the default branch. Tag pushes
+alone do not trigger `release.yml`; publishing the GitHub Release does.
 
 ## Repository layout
 

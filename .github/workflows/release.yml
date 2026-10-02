@@ -1,8 +1,6 @@
 name: Release
 
 on:
-  push:
-    tags: ['v*']
   release:
     types: [published]
   workflow_dispatch:
@@ -11,43 +9,45 @@ on:
         description: 'Existing release tag (for example v0.1.0)'
         required: true
         type: string
-      publish:
-        description: 'Attach files to GitHub Release (disable to build artifacts only)'
-        default: true
-        type: boolean
 
 permissions:
   contents: read
 
-# Serialize uploads when a tag push and release publication arrive together.
+# Serialize rebuilds of the same published release.
 concurrency:
-  group: release-${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+  group: release-${{ github.event.release.tag_name || inputs.tag }}
   cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
-  RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+  RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
 
 jobs:
   windows:
     name: Build Windows x64
-    runs-on: windows-2025
+    runs-on: windows-latest
     env:
       RUSTFLAGS: -C target-feature=+crt-static
     steps:
+      - name: Verify the published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: pwsh
+        run: |
+          $release = gh release view $env:RELEASE_TAG --json tagName,isDraft | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'The GitHub Release must already exist.' }
+          if ($release.isDraft) { throw 'Publish the GitHub Release before building its assets.' }
       - uses: actions/checkout@v4
         with:
           ref: refs/tags/${{ env.RELEASE_TAG }}
           persist-credentials: false
       - name: Install latest stable Rust
-        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy --target x86_64-pc-windows-msvc
+        run: rustup toolchain install stable --profile minimal --target x86_64-pc-windows-msvc
       - uses: Swatinem/rust-cache@v2
       - name: Set package versions from the tag
         run: python .github/scripts/set-release-version.py
-      - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - run: cargo test --workspace --locked
       - run: cargo build --workspace --release --locked --target x86_64-pc-windows-msvc
       - name: Package executables
         shell: pwsh
@@ -62,8 +62,7 @@ jobs:
   publish:
     name: Attach assets to GitHub Release
     needs: windows
-    if: github.event_name != 'workflow_dispatch' || inputs.publish
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
@@ -81,13 +80,5 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" assets/* --clobber
-          else
-            options=(--verify-tag --generate-notes --title "$RELEASE_TAG")
-            version="${RELEASE_TAG#v}"
-            if [[ "${version%%+*}" == *-* ]]; then
-              options+=(--prerelease)
-            fi
-            gh release create "$RELEASE_TAG" assets/* "${options[@]}"
-          fi
+          gh release view "$RELEASE_TAG" --json tagName,isDraft
+          gh release upload "$RELEASE_TAG" assets/* --clobber
