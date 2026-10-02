@@ -127,7 +127,3 @@ alone do not trigger `release.yml`; publishing the GitHub Release does.
 - `crates/desktop`: GPUI components, background jobs and virtualized lists.
 - `docs/PERFORMANCE.md`: measured results and validation boundaries.
 - `AGENTS.md`: development rules adapted from `cr-chat-desktop`.
-
-Copyright 2026 Mikhail Panfilov (Mnwa). The original Shazbot project (MIT) provides
-the format and interaction reference; GPUI and binary storage practices follow
-`cr-chat-desktop`. The original copyright notice is preserved in [LICENSE](LICENSE).

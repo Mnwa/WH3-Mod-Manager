@@ -6,7 +6,7 @@ resolver = "3"
 edition = "2024"
 version = "0.1.0"
 license = "MIT"
-authors = ["Mikhail Panfilov (Mnwa)"]
+authors = ["Mikhail Panfilov <mikhail@panfilov.tech>"]
 repository = "https://github.com/Mnwa/WH3-Mod-Manager"
 
 [workspace.dependencies]
