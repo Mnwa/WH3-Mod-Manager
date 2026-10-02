@@ -1,60 +1,72 @@
 # WH3 Mod Manager · Rust
 
-Нативный менеджер модов Total War: Warhammer III (Steam) на Rust и GPUI Kit.
-Первый этап переноса [Shazbot/WH3-Mod-Manager](https://github.com/Shazbot/WH3-Mod-Manager).
-Полный список реализованного и оставшихся отличий — [docs/MIGRATION.md](docs/MIGRATION.md).
+A native Total War: Warhammer III (Steam) mod manager built with Rust and GPUI Kit.
+This is the first stage of the [Shazbot/WH3-Mod-Manager](https://github.com/Shazbot/WH3-Mod-Manager)
+port. Implemented features and remaining differences are tracked in [MIGRATION.md](docs/MIGRATION.md).
 
-## Запуск
+## Running
 
-Нужен актуальный **stable Rust**. Версия компилятора не закреплена.
-Windows: Visual Studio Build Tools с C++ и Windows SDK, CMake. macOS: Command Line Tools.
+Use the latest **stable Rust**. The compiler version is not pinned.
+Windows builds require Visual Studio Build Tools with C++ and the Windows SDK, plus CMake.
+macOS builds require Command Line Tools.
 
 ```sh
 cargo run -p wh3-mod-manager --release --locked
-# Демонстрация большой библиотеки без установки игры:
+# Explore a large library without installing the game:
 cargo run -p wh3-mod-manager --release --locked -- --demo=100000
 ```
 
-Выберите папку с `Warhammer3.exe`. Менеджер сканирует `data` и соседнюю Steam Workshop
-папку `1142710`; дополнительные папки можно добавить вручную. Включайте моды флажками,
-выделяйте строку для изменения порядка. «Включить» / «Отключить» под фильтрами меняют все найденные моды. Поиск работает по названию, pack, Workshop ID,
-импортированному автору, тегам и категориям. Сортировка списка не меняет порядок запуска.
+Choose the folder containing `Warhammer3.exe`. The manager scans `data` and the
+adjacent Steam Workshop folder `1142710`; additional mod folders can be added manually.
+Use checkboxes to enable mods and select a row to change its load order. The **Enable**
+and **Disable** buttons affect all current search results. Search covers titles, pack
+names, Workshop IDs, imported authors, tags and categories. Sorting the table does not
+change the launch order.
 
-`Ctrl/Cmd+F` — поиск; `Ctrl/Cmd+S` — сохранить; `Alt+↑/↓` — сдвинуть выделенный мод;
-`Esc` — закрыть отчёт. При закрытии изменённая библиотека сохраняется автоматически;
-при ошибке записи окно остаётся открытым с сообщением.
+The interface supports **English and Russian**. Use the language button in the top
+bar to switch immediately; the choice is saved automatically. English is the initial
+default. Demo mode does not change saved preferences. Labels, tooltips, reports,
+application errors and input edit menus follow the selected language. Native file
+picker controls and operating-system error details follow the system language;
+mod titles, preset names and imported user content retain their original text.
 
-Кнопка «Играть» доступна в Windows. Создаётся отдельный `wh3_rust_mods.txt`;
-`used_mods.txt` оригинала не изменяется. Запуск с реальной игрой требует ручной проверки
-на Windows; автоматические тесты проверяют состав списка и аргументов.
+`Ctrl/Cmd+F` focuses search; `Ctrl/Cmd+S` saves; `Alt+Up/Down` moves the selected mod;
+`Esc` closes the report. Unsaved library changes are saved when closing the window.
+If saving fails, the window stays open and offers a choice to resolve the error or
+close without saving.
 
-## Перенос метаданных оригинала
+**Play** is available on Windows. It writes a separate `wh3_rust_mods.txt`, preserving
+the original manager's `used_mods.txt`. Launching a real game still requires manual
+Windows verification; automated tests cover script contents and launch arguments.
 
-В оригинальном менеджере сначала сохраните настройки. Его `config.json` находится в
-каталоге пользовательских данных Electron либо рядом с exe (portable-вариант).
+## Migrating original metadata
 
-В Rust-менеджере:
+Save settings in the original manager first. Its `config.json` is in the Electron
+user-data directory, or beside the executable for a portable installation.
 
-1. «Мета из оригинала…» → выбрать оригинальный `config.json` → сохранить `wh3-metadata.json`.
-2. «Импорт метаданных» → выбрать экспортированный файл (либо сразу `config.json`).
-3. Проверить отчёт об отсутствующих модах, порядок и включённые моды; сохранить библиотеку.
+In the Rust manager:
 
-Экспортёр также доступен отдельно, без GUI, Steam и Node.js:
+1. Choose **Original metadata…**, select the original `config.json`, and save `wh3-metadata.json`.
+2. Choose **Import metadata** and select the exported file, or import `config.json` directly.
+3. Review missing mods, load order and enabled states, then save the library.
+
+The exporter also works without the GUI, Steam or Node.js:
 
 ```sh
 cargo run -p wh3-core --bin wh3-meta --locked -- export config.json wh3-metadata.json
-# Из Windows-архива:
+# From the Windows distribution:
 wh3-meta.exe export config.json wh3-metadata.json
+wh3-meta.exe --lang=ru export config.json wh3-metadata.json
 ```
 
-Исходный config не изменяется. Экспорт включает сохранённые названия, авторов,
-категории, теги, Workshop ID, зависимости и пресеты, если эти поля есть в исходнике.
-Данные, которые оригинал не сохранил, не выдумываются и не скачиваются.
+The source configuration is never modified. Export includes saved titles, authors,
+categories, tags, Workshop IDs, dependencies and presets when present in the source.
+Missing data is neither invented nor downloaded.
 
-Внутреннее хранилище — бинарный `library.whmm` на **rkyv**, не JSON.
-Формат, резервная копия и восстановление описаны в [docs/STORAGE.md](docs/STORAGE.md).
+Internal persistence uses the **rkyv** binary `library.whmm` format. JSON is reserved
+for interchange. See [STORAGE.md](docs/STORAGE.md) for the format, backup and recovery.
 
-## Проверки и Windows EXE
+## Quality checks and Windows EXE
 
 ```sh
 cargo fmt --all --check
@@ -63,19 +75,55 @@ cargo test --workspace --locked
 cargo bench -p wh3-core --bench catalog --locked
 ```
 
-На macOS тест `visual` использует настоящий Metal-рендерер, создаёт снимки в
-`target/visual` и проверяет виртуализацию на 1 000 / 10 000 / 100 000 модов.
-На остальных платформах этот конкретный тест явно пропускается.
+On macOS, the `visual` test uses the real Metal renderer, writes screenshots into
+`target/visual`, checks both interface languages and validates virtualization with
+1,000 / 10,000 / 100,000 mods. This specific test is explicitly skipped elsewhere.
 
-GitHub Actions проверяет ядро на Linux, весь workspace на Windows/macOS и собирает
-Windows x64 release. Артефакт `WH3-Mod-Manager-windows-x64` содержит GUI exe,
-`wh3-meta.exe`, ZIP и SHA-256 суммы. Исполняемые файлы не подписаны.
+There are two GitHub Actions workflows:
 
-## Структура
+- `ci.yml` runs on pushes to `main` and pull requests targeting `main`. It checks
+  formatting, Clippy, tests, release-version handling and performance/visual results
+  on Linux, Windows and macOS. After successful pushes, Sampo prepares a draft release
+  PR with synchronized versions and package changelogs. CI does not package application releases.
+- `release.yml` runs when a GitHub Release is published. It reads that existing
+  release, checks out its exact tag and builds the Windows x64 executables with the
+  latest stable Rust. Package versions come from the SemVer tag (for example
+  `v0.1.0`); dependency versions remain locked.
 
-- `crates/core`: каталог, Steam-пути, pack-индексы, пресеты, метаданные, бинарное хранилище, запуск.
-- `crates/desktop`: GPUI, компактные компоненты интерфейса, фоновые задачи и виртуальные списки.
-- `docs/PERFORMANCE.md`: измерения и границы проверенного.
+## Release preparation
 
-За основу взаимодействий и форматов взят Shazbot (MIT); подходы к GPUI и rkyv —
-локальный проект `cr-chat-desktop`. Уведомление об авторских правах оригинала сохранено в LICENSE.
+Add user-visible changes as English [Sampo changesets](.sampo/README.md). CI validates
+the release plan; successful pushes to `main` create or refresh a draft release PR
+with versions and changelogs. Mark it Ready for review to run CI, then merge it before
+publishing the matching GitHub Release. See the [desktop changelog](crates/desktop/CHANGELOG.md)
+and [core changelog](crates/core/CHANGELOG.md).
+
+## Publishing a release
+
+Publish a GitHub Release whose tag points to a commit containing `release.yml` and
+its scripts. The workflow builds and retains an Actions artifact, then attaches these
+files to the same release:
+
+- `wh3-mod-manager.exe` and `wh3-meta.exe` (Windows x64, unsigned).
+- `WH3-Mod-Manager-<tag>-windows-x64.zip` with documentation and the license.
+- `SHA256SUMS.txt` covering both executables and the ZIP.
+
+Reruns replace matching assets while preserving the release's title, notes and
+prerelease status. The workflow requires an existing published release and never
+creates one. Upload uses the built-in `GITHUB_TOKEN`; no additional secret is needed.
+
+To rebuild an existing published release manually:
+
+```sh
+gh workflow run release.yml -f tag=v0.1.0
+```
+
+Manual dispatch is available once the workflow is on the default branch. Tag pushes
+alone do not trigger `release.yml`; publishing the GitHub Release does.
+
+## Repository layout
+
+- `crates/core`: catalog, Steam paths, pack indexes, presets, metadata, binary persistence and launch logic.
+- `crates/desktop`: GPUI components, background jobs and virtualized lists.
+- `docs/PERFORMANCE.md`: measured results and validation boundaries.
+- `AGENTS.md`: development rules adapted from `cr-chat-desktop`.
