@@ -91,11 +91,8 @@ pub fn watch(roots: &[(PathBuf, Source)], saves: Option<&Path>) -> Result<Watche
         .map(|(root, _)| root.as_path())
         .filter(|folder| folder.is_dir())
         .map(canonical_folder)
-        .collect::<Result<_>>()?;
-    let saves_folder = saves
-        .filter(|folder| folder.is_dir())
-        .map(canonical_folder)
-        .transpose()?;
+        .collect();
+    let saves_folder = saves.filter(|folder| folder.is_dir()).map(canonical_folder);
     let sink = signals.clone();
     let (watched, saves_watched) = (folders.clone(), saves_folder.clone());
     let mut inner = notify::recommended_watcher(move |event: notify::Result<Event>| {
@@ -125,10 +122,13 @@ pub fn watch(roots: &[(PathBuf, Source)], saves: Option<&Path>) -> Result<Watche
     })
 }
 
-fn canonical_folder(folder: &Path) -> Result<PathBuf> {
+/// Windows cannot resolve final paths on some RAM, network and virtual drives. The
+/// backends there report events under the registered path, so watching the original
+/// path keeps updates working instead of failing every folder.
+fn canonical_folder(folder: &Path) -> PathBuf {
     folder
         .canonicalize()
-        .map_err(|error| watch_error(notify::Error::from(error).add_path(folder.to_path_buf())))
+        .unwrap_or_else(|_| folder.to_path_buf())
 }
 
 fn watch_error(error: notify::Error) -> Error {
