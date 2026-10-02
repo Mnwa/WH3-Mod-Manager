@@ -7936,7 +7936,7 @@ dependencies = [
 
 [[package]]
 name = "wh3-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "crc32fast",
  "dirs 7.0.0",
@@ -7949,7 +7949,7 @@ dependencies = [
 
 [[package]]
 name = "wh3-mod-manager"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "gpui-kit",
  "rust-i18n",
