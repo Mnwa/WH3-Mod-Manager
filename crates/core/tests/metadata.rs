@@ -24,11 +24,10 @@ fn original_v3_export_is_portable_and_preserves_metadata_and_presets() {
         metadata::read(&destination).unwrap().mods["mod_000000.pack"].req_mod_id_to_name,
         [("123".into(), "Dependency".into())]
     );
-    assert!(
-        bundle
-            .warnings
-            .iter()
-            .any(|warning| warning.contains("rules"))
+    // The original's user rules survive the export and become applied rules.
+    assert_eq!(
+        metadata::read(&destination).unwrap().user_rules(),
+        [wh3_core::load_order::Rule::user("a", "b", "b")]
     );
 }
 
@@ -66,7 +65,7 @@ fn binary_library_roundtrips_metadata_and_keeps_previous_generation() {
     };
     storage::save(&path, &settings).unwrap();
     let original = fs::read(&path).unwrap();
-    assert!(original.starts_with(b"WHM1"));
+    assert!(original.starts_with(b"WHM3"));
     let decoded = storage::load(&path).unwrap();
     assert_eq!(decoded.metadata["a.pack"].human_name, "Кислев");
     assert_eq!(decoded.game_path, settings.game_path);
@@ -95,7 +94,7 @@ fn binary_library_rejects_bitflips_truncation_and_future_version_without_overwri
 }
 
 #[test]
-fn binary_schema_matches_frozen_v1_fixture() {
+fn frozen_v1_fixture_migrates_to_current_without_losing_state() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("library.whmm");
     let fixture = include_bytes!("fixtures/state-v1.whmm");
@@ -106,9 +105,92 @@ fn binary_schema_matches_frozen_v1_fixture() {
         Some(3)
     );
     assert_eq!(settings.game_path, Some("C:/WH3".into()));
+    assert!(settings.hidden.is_empty() && settings.always_enabled.is_empty());
+    assert_eq!(settings.options, storage::GameOptions::default());
+    // Saving migrates in place and keeps the WHM1 generation as the backup.
+    storage::save(&path, &settings).unwrap();
+    assert!(fs::read(&path).unwrap().starts_with(b"WHM3"));
+    assert_eq!(fs::read(path.with_extension("whmm.bak")).unwrap(), fixture);
+    let migrated = storage::load(&path).unwrap();
+    assert_eq!(migrated.game_path, settings.game_path);
+    assert_eq!(migrated.roots.len(), settings.roots.len());
+    assert_eq!(migrated.metadata.len(), settings.metadata.len());
+}
+
+fn v2_state() -> storage::Settings {
+    let fixture = include_bytes!("fixtures/state-v1.whmm");
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("library.whmm");
+    fs::write(&path, fixture).unwrap();
+    let mut settings = storage::load(&path).unwrap();
+    settings.hidden.insert("hidden.pack".into());
+    settings.always_enabled.insert("always.pack".into());
+    settings.options = storage::GameOptions {
+        skip_intro_movies: true,
+        script_logging: false,
+        auto_start_custom_battle: true,
+        close_on_play: true,
+        make_units_generals: false,
+    };
+    settings
+}
+
+#[test]
+fn frozen_v2_fixture_migrates_to_current_without_losing_state() {
+    let temp = tempfile::tempdir().unwrap();
+    let fixture = include_bytes!("fixtures/state-v2.whmm");
+    let path = temp.path().join("library.whmm");
+    fs::write(&path, fixture).unwrap();
+    let settings = storage::load(&path).unwrap();
+    let expected = v2_state();
+    assert_eq!(settings.hidden, expected.hidden);
+    assert_eq!(settings.always_enabled, expected.always_enabled);
+    assert_eq!(settings.options, expected.options);
+    assert!(settings.rules.is_empty() && settings.disabled_rules.is_empty());
+    storage::save(&path, &settings).unwrap();
+    assert!(fs::read(&path).unwrap().starts_with(b"WHM3"));
+    assert_eq!(fs::read(path.with_extension("whmm.bak")).unwrap(), fixture);
+    assert_eq!(storage::load(&path).unwrap().hidden, expected.hidden);
+}
+
+fn v3_state() -> storage::Settings {
+    let mut settings = v2_state();
+    settings.rules = vec![wh3_core::load_order::Rule::user(
+        "a.pack", "b.pack", "b.pack",
+    )];
+    settings
+        .disabled_rules
+        .insert("c.pack\tc.pack\td.pack".into());
+    settings.disabled_rule_packs.insert("e.pack".into());
+    settings.options.make_units_generals = true;
+    settings
+}
+
+#[test]
+fn binary_schema_matches_frozen_v3_fixture() {
+    let temp = tempfile::tempdir().unwrap();
+    let fixture = include_bytes!("fixtures/state-v3.whmm");
+    let path = temp.path().join("library.whmm");
+    fs::write(&path, fixture).unwrap();
+    let settings = storage::load(&path).unwrap();
+    let expected = v3_state();
+    assert_eq!(settings.rules, expected.rules);
+    assert_eq!(settings.disabled_rules, expected.disabled_rules);
+    assert_eq!(settings.disabled_rule_packs, expected.disabled_rule_packs);
+    assert_eq!(settings.hidden, expected.hidden);
     let new_path = temp.path().join("roundtrip.whmm");
-    storage::save(&new_path, &settings).unwrap();
+    storage::save(&new_path, &expected).unwrap();
     assert_eq!(fs::read(new_path).unwrap(), fixture);
+}
+
+#[test]
+fn v2_rejects_unknown_option_bits() {
+    assert!(storage::GameOptions::from_bits(1 << 31).is_none());
+    let options = v2_state().options;
+    assert_eq!(
+        storage::GameOptions::from_bits(options.bits()),
+        Some(options)
+    );
 }
 
 #[test]

@@ -1,14 +1,12 @@
-use super::{Filter, Manager};
+use super::{Filter, Manager, Sort, SortKey};
+use crate::update::{Updater, UpdaterEvent};
 use gpui_kit::{
     component::input::{InputEvent, InputState},
     *,
 };
-use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Duration,
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
 };
 use wh3_core::{catalog::Catalog, preset::Preset, scan, steam, storage};
 
@@ -33,17 +31,29 @@ impl Manager {
                 this.refresh_query(cx);
             }
         });
+        let updater = cx.new(|cx| Updater::new(demo.is_some(), cx));
+        let restart = cx.subscribe(&updater, |this: &mut Self, _, event, cx| match event {
+            UpdaterEvent::RestartRequested => this.restart_for_update(cx),
+        });
+        let update_phase = cx.observe(&updater, |_, _, cx| cx.notify());
         let mut this = Self {
             catalog: Arc::default(),
             order: Arc::default(),
             ranks: vec![],
-            sort_name: false,
+            sort: Sort {
+                key: SortKey::Order,
+                descending: false,
+            },
             enabled: Default::default(),
             visible: vec![],
             selected: None,
+            marked: Default::default(),
+            anchor: None,
             search,
             preset_name,
             filter: Filter::All,
+            category: None,
+            categories: vec![],
             settings: Default::default(),
             language: Default::default(),
             preferences_task: None,
@@ -51,6 +61,8 @@ impl Manager {
             status: wh3_core::message!("Loading…", "Загрузка…"),
             diagnostics: vec![],
             details: vec![],
+            compat: Default::default(),
+            report_tab: super::compat::Tab::Diagnostics,
             show_report: false,
             busy: true,
             cancellable: demo.is_none(),
@@ -58,13 +70,20 @@ impl Manager {
             dirty: false,
             focus: cx.focus_handle(),
             scroll: UniformListScrollHandle::new(),
+            report_scroll: UniformListScrollHandle::new(),
+            preset_scroll: UniformListScrollHandle::new(),
             cancel: Arc::new(AtomicBool::new(false)),
             generation: 0,
             query_generation: 0,
             job: None,
             search_task: None,
             io_task: None,
-            _subscriptions: vec![subscription],
+            launch: Default::default(),
+            steam: Default::default(),
+            rules: Default::default(),
+            updater,
+            window_title: String::new(),
+            _subscriptions: vec![subscription, restart, update_phase],
             rendered_rows: 0,
         };
         this.load_language(window, cx);
@@ -97,6 +116,7 @@ impl Manager {
                         this.settings = settings;
                         this.apply_scan(scan, cx);
                         this.dirty = false;
+                        this.refresh_saves(cx);
                     }
                     Err(error) => {
                         this.status = error.message();
@@ -111,7 +131,11 @@ impl Manager {
     pub(super) fn apply_scan(&mut self, scan: scan::Scan, cx: &mut Context<Self>) {
         self.catalog = Arc::new(scan.catalog);
         self.selected = None;
+        self.marked.clear();
+        self.anchor = None;
         self.details.clear();
+        self.compat = Default::default();
+        self.rebuild_categories();
         let preset = self.settings.current.clone().unwrap_or(Preset {
             name: "Current".into(),
             mods: vec![],
@@ -119,6 +143,11 @@ impl Manager {
         });
         self.apply_preset(&preset, cx);
         self.diagnostics.extend(scan.warnings);
+        self.rebuild_workshop_ids();
+        self.after_steam_rescan();
+        self.refresh_outdated(cx);
+        self.refresh_workshop(cx);
+        self.scan_pack_rules(cx);
         self.status = if self.demo {
             wh3_core::message!(
                 "Demo · no game files are used",
@@ -171,48 +200,5 @@ impl Manager {
             });
         }));
         cx.notify();
-    }
-
-    pub(super) fn refresh_query(&mut self, cx: &mut Context<Self>) {
-        self.query_generation += 1;
-        let generation = self.query_generation;
-        let query = self.search.read(cx).value().to_string();
-        let catalog = self.catalog.clone();
-        let order = self.order.clone();
-        let filter = self.filter;
-        let sort_name = self.sort_name;
-        let enabled = if filter == Filter::All {
-            None
-        } else {
-            Some(self.enabled.clone())
-        };
-        let executor = cx.background_executor().clone();
-        self.search_task = Some(cx.spawn(async move |this, cx| {
-            executor.timer(Duration::from_millis(75)).await;
-            let visible = executor
-                .spawn(async move {
-                    let mut visible = catalog.query(&query, &order);
-                    if sort_name {
-                        visible.sort_by(|&a, &b| {
-                            catalog.mods[a]
-                                .title
-                                .cmp(&catalog.mods[b].title)
-                                .then(a.cmp(&b))
-                        });
-                    }
-                    if let Some(enabled) = enabled {
-                        visible.retain(|i| enabled.contains(i) == (filter == Filter::Enabled));
-                    }
-                    visible
-                })
-                .await;
-            let _ = this.update(cx, |this, cx| {
-                if generation != this.query_generation {
-                    return;
-                }
-                this.visible = visible;
-                cx.notify();
-            });
-        }));
     }
 }

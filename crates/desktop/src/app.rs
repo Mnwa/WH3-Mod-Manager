@@ -9,7 +9,7 @@ pub fn run() {
         })
         .map(|n| n.min(100_000));
     gpui_kit::application()
-        .with_assets(gpui_kit::assets::Assets)
+        .with_assets(crate::assets::AppAssets)
         .run(move |cx| {
             gpui_kit::init(cx);
             theme::install(cx);

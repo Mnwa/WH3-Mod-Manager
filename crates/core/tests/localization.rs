@@ -48,9 +48,22 @@ fn existing_results_can_change_language_without_repeating_work() {
         "Некорректный pack: обрезанное имя"
     );
     let bundle = metadata::Bundle::parse(
-        br#"{"currentPreset":{"name":"x","mods":[]},"loadOrderRules":[{}]}"#,
+        br#"{"currentPreset":{"name":"x","mods":[]},"loadOrderRules":[{"before":"a.pack","after":"b.pack","subjectPackName":"b.pack"},{"before":"c.pack","after":"d.pack","sourcePackName":"c.pack"}],"disabledModLoadOrderRules":["k"],"loadOrderRuleDisabledPacks":["e.pack"],"alwaysEnabledModNames":["always.pack"],"hiddenModNames":["hidden.pack"],"isSkipIntroMoviesEnabled":true,"isMakeUnitsGeneralsEnabled":true}"#,
     )
     .unwrap();
+    // User rules are imported and applied; pack-supplied ones come from the packs.
+    assert_eq!(
+        bundle.user_rules(),
+        [wh3_core::load_order::Rule::user(
+            "a.pack", "b.pack", "b.pack"
+        )]
+    );
+    assert_eq!(bundle.disabled_load_order_rules, ["k"]);
+    assert_eq!(bundle.load_order_rule_disabled_packs, ["e.pack"]);
+    assert_eq!(bundle.always_enabled, ["always.pack"]);
+    assert_eq!(bundle.hidden, ["hidden.pack"]);
+    let options = bundle.options.expect("start options are imported");
+    assert!(options.skip_intro_movies && options.make_units_generals && !options.script_logging);
     let notices: Vec<_> = bundle
         .warnings
         .into_iter()
@@ -59,12 +72,12 @@ fn existing_results_can_change_language_without_repeating_work() {
     assert!(
         notices
             .iter()
-            .any(|m| m.text(Language::English).contains("rules"))
+            .any(|m| m.text(Language::English).contains("Workshop fields"))
     );
     assert!(
         notices
             .iter()
-            .any(|m| m.text(Language::Russian).contains("правила"))
+            .any(|m| m.text(Language::Russian).contains("поля Workshop"))
     );
 }
 

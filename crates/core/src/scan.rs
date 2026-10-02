@@ -1,3 +1,5 @@
+mod thumbnail;
+
 use crate::{
     Error, Result,
     catalog::{Catalog, Mod, Source},
@@ -43,23 +45,32 @@ pub fn scan(roots: &[(PathBuf, Source)], cancelled: &AtomicBool) -> Result<Scan>
                     continue;
                 }
             };
+            // The whole listing is needed before packs are read, because a thumbnail is chosen
+            // from the images beside a pack.
+            let mut files = Vec::new();
             for entry in entries {
                 if cancelled.load(Ordering::Relaxed) {
                     return Err(Error::Cancelled);
                 }
-                let entry = match entry {
-                    Ok(entry) => entry,
+                let path = match entry {
+                    Ok(entry) => entry.path(),
                     Err(e) => {
                         warnings.push(crate::message!("File error: {}", "Ошибка файла: {}", e));
                         continue;
                     }
                 };
-                let path = entry.path();
                 if path.is_dir() {
                     if *source != Source::Data {
                         pending.push(path);
                     }
-                    continue;
+                } else {
+                    files.push(path);
+                }
+            }
+            let images = thumbnail::images(&files);
+            for path in files {
+                if cancelled.load(Ordering::Relaxed) {
+                    return Err(Error::Cancelled);
                 }
                 if !path
                     .extension()
@@ -78,7 +89,10 @@ pub fn scan(roots: &[(PathBuf, Source)], cancelled: &AtomicBool) -> Result<Scan>
                     continue;
                 }
                 match read_mod(&path, *source) {
-                    Ok(Some(item)) => mods.push(item),
+                    Ok(Some(item)) => {
+                        let image = thumbnail::pick(&path, *source, &images);
+                        mods.push(item.with_thumbnail(image));
+                    }
                     Ok(None) => {}
                     Err(e) => warnings.push(e.message()),
                 }
@@ -86,10 +100,9 @@ pub fn scan(roots: &[(PathBuf, Source)], cancelled: &AtomicBool) -> Result<Scan>
         }
     }
     mods.sort_by(|a, b| a.name.cmp(&b.name).then(a.path.cmp(&b.path)));
-    Ok(Scan {
-        catalog: Catalog::new(mods),
-        warnings,
-    })
+    let mut catalog = Catalog::new(mods);
+    thumbnail::inherit(&mut catalog);
+    Ok(Scan { catalog, warnings })
 }
 
 fn read_mod(path: &Path, source: Source) -> Result<Option<Mod>> {
@@ -114,13 +127,21 @@ fn read_mod(path: &Path, source: Source) -> Result<Option<Mod>> {
         .unwrap_or_default()
         .to_string_lossy()
         .replace('_', " ");
-    Ok(Some(Mod::new(
-        path.to_owned(),
-        title,
-        workshop_id,
-        source,
-        header.pack_size,
-        kind == 4,
-        header.dependencies,
-    )))
+    // Follows symlinks on purpose: a linked pack's content changes with its target, while the
+    // link's own timestamp says nothing about the mod. A missing time is not an error.
+    let modified = fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .ok();
+    Ok(Some(
+        Mod::new(
+            path.to_owned(),
+            title,
+            workshop_id,
+            source,
+            header.pack_size,
+            kind == 4,
+            header.dependencies,
+        )
+        .with_modified(modified),
+    ))
 }

@@ -1,48 +1,38 @@
 use super::{Filter, Manager};
 use gpui_kit::*;
-use std::sync::{Arc, atomic::Ordering};
-use wh3_core::{catalog::Source, conflict, launch, pack, steam};
+use wh3_core::{catalog::Source, pack, steam};
 
 impl Manager {
     pub(super) fn toggle(&mut self, index: usize, cx: &mut Context<Self>) {
         if self.busy {
             return;
         }
-        if !self.enabled.remove(&index) {
+        if self.enabled.contains(&index) && self.is_always_enabled(index) {
+            self.status = wh3_core::message!(
+                "{} is kept always enabled",
+                "{} всегда включён",
+                self.catalog.mods[index].name
+            );
+        } else if !self.enabled.remove(&index) {
             self.enabled.insert(index);
         }
         self.dirty = true;
-        if self.filter != Filter::All {
+        self.refresh_if_enabled_matters(cx);
+        cx.notify();
+    }
+
+    /// After the enabled set changes: rules only constrain enabled mods, and the
+    /// visible rows change only when enabled state filters or sorts them.
+    pub(super) fn refresh_if_enabled_matters(&mut self, cx: &mut Context<Self>) {
+        self.apply_rules(cx);
+        if self.filter != Filter::All || self.sort.key == super::SortKey::Enabled {
             self.refresh_query(cx);
         }
-        cx.notify();
     }
 
     pub(super) fn select(&mut self, index: usize, cx: &mut Context<Self>) {
         self.selected = Some(index);
         self.details.clear();
-        cx.notify();
-    }
-
-    pub(super) fn move_selected(&mut self, direction: isize, cx: &mut Context<Self>) {
-        if self.busy {
-            return;
-        }
-        let Some(index) = self.selected else {
-            return;
-        };
-        let order = Arc::make_mut(&mut self.order);
-        let Some(position) = order.iter().position(|&i| i == index) else {
-            return;
-        };
-        let next = position
-            .saturating_add_signed(direction)
-            .min(order.len().saturating_sub(1));
-        order.swap(position, next);
-        self.rebuild_ranks();
-        self.sort_name = false;
-        self.dirty = true;
-        self.refresh_query(cx);
         cx.notify();
     }
 
@@ -149,99 +139,11 @@ impl Manager {
                     match result {
                         Ok(files) => {
                             this.details = files;
-                            this.show_report = true;
+                            this.show_report_tab(super::compat::Tab::Details, cx);
                         }
                         Err(e) => this.status = e.message(),
                     }
                 }
-                cx.notify();
-            });
-        }));
-        cx.notify();
-    }
-
-    pub(super) fn check(&mut self, cx: &mut Context<Self>) {
-        if self.busy || self.demo {
-            return;
-        }
-        self.busy = true;
-        self.cancellable = true;
-        self.status = wh3_core::message!(
-            "Checking overlapping files and dependencies…",
-            "Проверка совпадающих файлов и зависимостей…"
-        );
-        self.cancel.store(false, Ordering::Relaxed);
-        let (catalog, order, enabled, cancel) = (
-            self.catalog.clone(),
-            self.order.clone(),
-            self.enabled.clone(),
-            self.cancel.clone(),
-        );
-        let task = cx.background_spawn(async move {
-            let report = conflict::check(&catalog, &order, &enabled, &cancel)?;
-            let count = report.collisions.len();
-            let lines: Vec<wh3_core::localization::Message> = report
-                .warnings
-                .into_iter()
-                .chain(report.collisions.into_iter().map(|collision| {
-                    format!(
-                        "{}  ←  {}",
-                        collision.file,
-                        collision
-                            .mods
-                            .iter()
-                            .map(|&i| catalog.mods[i].name.as_ref())
-                            .collect::<Vec<_>>()
-                            .join(" / ")
-                    )
-                    .into()
-                }))
-                .collect();
-            Ok::<_, wh3_core::Error>((count, lines))
-        });
-        self.job = Some(cx.spawn(async move |this, cx| {
-            let result = task.await;
-            let _ = this.update(cx, |this, cx| {
-                this.busy = false;
-                this.cancellable = false;
-                match result {
-                    Ok((count, lines)) => { this.status = wh3_core::message!("Overlapping paths: {count}. An overlap does not always mean incompatibility.", "Совпадающих путей: {count}. Совпадение не всегда означает несовместимость.", count = count); this.diagnostics = lines; this.details.clear(); this.show_report = true; }
-                    Err(error) => this.status = error.message(),
-                }
-                cx.notify();
-            });
-        }));
-        cx.notify();
-    }
-
-    pub(super) fn play(&mut self, cx: &mut Context<Self>) {
-        if self.busy || self.demo {
-            return;
-        }
-        let Some(game) = self.settings.game_path.clone() else {
-            return;
-        };
-        let (catalog, order, enabled) = (
-            self.catalog.clone(),
-            self.order.clone(),
-            self.enabled.clone(),
-        );
-        self.busy = true;
-        let task = cx.background_spawn(async move {
-            launch::prepare(&game, &catalog, &order, &enabled)?;
-            launch::start(&game)
-        });
-        self.job = Some(cx.spawn(async move |this, cx| {
-            let result = task.await;
-            let _ = this.update(cx, |this, cx| {
-                this.busy = false;
-                this.status = match result {
-                    Ok(()) => wh3_core::message!(
-                        "Launch command sent to the game",
-                        "Команда запуска передана игре"
-                    ),
-                    Err(e) => e.message(),
-                };
                 cx.notify();
             });
         }));
@@ -254,12 +156,13 @@ impl Manager {
         }
         let indices = self.visible.clone();
         let mut selected = self.enabled.clone();
+        let always = self.always_enabled_indices();
         self.busy = true;
         let task = cx.background_spawn(async move {
             for index in indices {
                 if enabled {
                     selected.insert(index);
-                } else {
+                } else if !always.contains(&index) {
                     selected.remove(&index);
                 }
             }
@@ -272,6 +175,7 @@ impl Manager {
                 this.busy = false;
                 this.dirty = true;
                 this.refresh_query(cx);
+                this.apply_rules(cx);
                 cx.notify();
             });
         }));

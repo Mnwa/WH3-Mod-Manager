@@ -1,0 +1,14 @@
+schema_wh3.json.zst
+
+Warhammer III DB table definitions, copied unchanged from the original WH3 Mod Manager
+(https://github.com/Shazbot/WH3-Mod-Manager, schema/schema_wh3.json.zst, commit 0578b4f
+"update schema", 2026-09-24), Copyright (c) 2022 Shazbot, MIT License.
+
+The definitions derive from the RPFM schemas
+(https://github.com/Frodo45127/rpfm-schemas), Copyright (c) 2020 Ismael Gutiérrez González,
+MIT License.
+
+SHA-256: 86fdf8e5d6772951e3dc46b460e658d0372665b39af950c058b20f7bc95076f9
+
+To update, copy a newer schema_wh3.json.zst from either project (zstd-compressed RPFM JSON
+schema, format version 5) and update the commit and checksum above.

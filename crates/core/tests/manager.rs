@@ -152,18 +152,35 @@ fn conflicts_normalize_paths_and_aggregate_multiple_owners() {
         &AtomicBool::new(false),
     )
     .unwrap();
-    assert_eq!(report.collisions.len(), 1);
-    assert_eq!(report.collisions[0].mods, [2, 0, 1]);
+    assert_eq!(report.files.len(), 1);
+    assert_eq!(report.files[0].path, "db\\units\\a");
+    assert_eq!(report.files[0].owners, [2, 0, 1]);
 }
 
 #[test]
 fn launch_script_preserves_order_and_rejects_ambiguous_names_and_injection() {
     let catalog = Catalog::demo(3);
-    let script = launch::script(&catalog, &[2, 0, 1], &HashSet::from([0, 2])).unwrap();
+    let script = launch::script(
+        &catalog,
+        &[2, 0, 1],
+        &HashSet::from([0, 2]),
+        &launch::Options::default(),
+        std::path::Path::new("temp"),
+    )
+    .unwrap();
     assert!(script.ends_with("mod \"mod_000002.pack\";\nmod \"mod_000000.pack\";"));
     let mut mods = catalog.mods.clone();
     mods.push(mods[0].clone());
-    assert!(launch::script(&Catalog::new(mods), &[0, 3], &HashSet::from([0, 3])).is_err());
+    assert!(
+        launch::script(
+            &Catalog::new(mods),
+            &[0, 3],
+            &HashSet::from([0, 3]),
+            &launch::Options::default(),
+            std::path::Path::new("temp"),
+        )
+        .is_err()
+    );
     let injected = Mod::new(
         "bad\";quit.pack".into(),
         "bad".into(),
@@ -173,7 +190,16 @@ fn launch_script_preserves_order_and_rejects_ambiguous_names_and_injection() {
         false,
         vec![],
     );
-    assert!(launch::script(&Catalog::new(vec![injected]), &[0], &HashSet::from([0])).is_err());
+    assert!(
+        launch::script(
+            &Catalog::new(vec![injected]),
+            &[0],
+            &HashSet::from([0]),
+            &launch::Options::default(),
+            std::path::Path::new("temp"),
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -187,7 +213,15 @@ fn launch_does_not_overwrite_original_manager_script() {
         &AtomicBool::new(false),
     )
     .unwrap();
-    launch::prepare(temp.path(), &scan.catalog, &[0], &HashSet::from([0])).unwrap();
+    launch::prepare(
+        temp.path(),
+        &scan.catalog,
+        &[0],
+        &HashSet::from([0]),
+        &launch::Options::default(),
+        &temp.path().join("temp_packs"),
+    )
+    .unwrap();
     assert_eq!(
         fs::read(temp.path().join("used_mods.txt")).unwrap(),
         b"original"
@@ -220,4 +254,110 @@ fn steam_vdf_supports_escaped_windows_paths_comments_and_multiple_libraries() {
         steam::quoted_values(input, "path"),
         [r"C:\Program Files (x86)\Steam", r"D:\SteamLibrary"]
     );
+}
+
+#[test]
+fn update_is_offered_only_for_newer_releases_with_executable_and_checksums() {
+    use wh3_core::update::{EXE_ASSET, SUMS_ASSET, newer};
+    let release = |version: &str, assets: &[&str]| {
+        self_update::Release::builder()
+            .version(version)
+            .name(version)
+            .assets(
+                assets
+                    .iter()
+                    .map(|name| self_update::ReleaseAsset::new(*name, "https://example.invalid")),
+            )
+            .build()
+            .unwrap()
+    };
+    let complete = [EXE_ASSET, SUMS_ASSET];
+    assert_eq!(
+        newer("0.2.0", &release("0.3.0", &complete)).map(|a| a.version),
+        Some("0.3.0".into())
+    );
+    assert!(newer("0.2.0", &release("0.2.0", &complete)).is_none());
+    assert!(newer("0.3.0", &release("0.2.9", &complete)).is_none());
+    // release.yml uploads assets after publication; a bare release is not installable yet.
+    assert!(newer("0.2.0", &release("0.3.0", &[SUMS_ASSET])).is_none());
+    assert!(newer("0.2.0", &release("0.3.0", &[EXE_ASSET])).is_none());
+}
+
+#[test]
+fn original_v2_preset_orders_enabled_mods_by_name_and_pins_like_the_original() {
+    // The original launches `sortByNameAndLoadOrder(enabled)`: code-unit name order
+    // with pinned mods spliced in at their index; list order does not matter.
+    let preset = Preset::parse(
+        br#"{"name":"current","version":2,"mods":[
+            {"name":"b.pack","loadOrder":0},
+            {"name":"a.pack"},
+            {"name":"off.pack","isEnabled":false,"loadOrder":0},
+            {"name":"@c.pack"},
+            {"name":"C.pack","loadOrder":3}
+        ]}"#,
+    )
+    .unwrap()
+    .remove(0);
+    let names = ["a.pack", "b.pack", "@c.pack", "C.pack", "off.pack"];
+    let catalog = Catalog::new(
+        names
+            .iter()
+            .map(|n| {
+                Mod::new(
+                    format!("x/{n}").into(),
+                    String::new(),
+                    String::new(),
+                    Source::Workshop,
+                    0,
+                    false,
+                    vec![],
+                )
+            })
+            .collect(),
+    );
+    let applied = preset.apply(&catalog);
+    let launched: Vec<_> = applied
+        .order
+        .iter()
+        .filter(|i| applied.enabled.contains(i))
+        .map(|&i| &*catalog.mods[i].name)
+        .collect();
+    assert_eq!(launched, ["b.pack", "@c.pack", "a.pack", "C.pack"]);
+}
+
+#[test]
+fn compare_mod_names_matches_the_original_including_prefixes() {
+    use std::cmp::Ordering::*;
+    use wh3_core::preset::compare_mod_names;
+    assert_eq!(compare_mod_names("!a", "@a"), Less);
+    assert_eq!(compare_mod_names("Z", "a"), Less);
+    // A prefix sorts after the longer name in the original.
+    assert_eq!(compare_mod_names("mod", "mod_extra"), Greater);
+    assert_eq!(compare_mod_names("same", "same"), Equal);
+}
+
+#[test]
+fn presets_written_by_this_manager_keep_list_order_even_with_pins() {
+    let preset = Preset::parse(
+        br#"{"name":"mine","version":3,"mods":[{"name":"z.pack","loadOrder":0},{"name":"a.pack"}]}"#,
+    )
+    .unwrap()
+    .remove(0);
+    let catalog = Catalog::new(
+        ["a.pack", "z.pack"]
+            .iter()
+            .map(|n| {
+                Mod::new(
+                    format!("x/{n}").into(),
+                    String::new(),
+                    String::new(),
+                    Source::Workshop,
+                    0,
+                    false,
+                    vec![],
+                )
+            })
+            .collect(),
+    );
+    assert_eq!(preset.apply(&catalog).order, [1, 0]);
 }

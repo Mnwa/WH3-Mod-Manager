@@ -16,6 +16,12 @@ pub enum Error {
     Pack(Message),
     #[error("Invalid data: {0}")]
     Invalid(Message),
+    /// Third-party update errors keep their original English text.
+    #[error("Update failed: {0}")]
+    Update(String),
+    /// Steam's own error text, kept verbatim.
+    #[error("Steam: {0}")]
+    Steam(String),
     #[error("Operation cancelled")]
     Cancelled,
     #[error(transparent)]
@@ -42,6 +48,12 @@ impl Error {
                 format!("Invalid data: {}", detail.text(Language::English)),
                 format!("Некорректные данные: {}", detail.text(Language::Russian)),
             ),
+            Self::Update(detail) => message!(
+                "Update failed: {}",
+                "Не удалось обновить приложение: {}",
+                detail
+            ),
+            Self::Steam(detail) => message!("Steam error: {}", "Ошибка Steam: {}", detail),
             Self::Cancelled => message!("Operation cancelled", "Операция отменена"),
             Self::Io { path, source } => message!(
                 "File error at {}: {}",

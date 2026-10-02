@@ -11,7 +11,7 @@ fn main() {
     use wh3_mod_manager::{manager::Manager, theme};
     let mut cx = HeadlessAppContext::with_platform(
         gpui_kit::platform::current_platform(true).text_system(),
-        Arc::new(gpui_kit::assets::Assets),
+        Arc::new(wh3_mod_manager::assets::AppAssets),
         gpui_kit::platform::current_headless_renderer,
     );
     cx.update(|cx| {

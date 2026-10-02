@@ -58,13 +58,18 @@ workspace rather than creating empty layers:
 - Children communicate through callbacks or events. They never reach into parents.
   Use model methods to change shared state and scope notifications to affected views.
 - Never block the GUI thread with filesystem access, pack parsing, serialization,
-  conflict analysis or large searches. Use `cx.background_spawn`.
+  conflict analysis, large searches or Steam calls. Use `cx.background_spawn`.
+- Never initialise Steamworks in the GUI process: it would present the manager as the
+  running game. Steam requests go through `wh3_core::workshop::call`, which runs the
+  `--steam-worker` child; keep `steam_api64.dll` delay-loaded.
 - Own `Task`s and `Subscription`s in the view. Detach only deliberate fire-and-forget
   work. Use cancellation and generation checks so stale results cannot replace new state.
 - Keep mod, preset and report lists virtualized. Never scan, sort, clone or lay out
   the whole library during render. Borrow data or share immutable snapshots with `Arc`.
 - Normalize search data once, debounce typing and avoid per-keystroke catalog copies.
-- Do not add SIMD, unsafe code or special allocators without a measured bottleneck.
+- The GUI binary uses `mimalloc3` as its global allocator, as in the reference project;
+  `wh3-core` stays allocator-agnostic. Do not add SIMD, unsafe code or other special
+  allocators without a measured bottleneck.
   Record corpus, environment, build mode, raw samples and limitations for performance claims.
 - Do not call `.hover()` twice on an element; GPUI can panic. Compose hover styling once.
 - Add `.cursor_pointer()` to clickable kit buttons only while enabled, using `.when`.
@@ -89,12 +94,14 @@ workspace rather than creating empty layers:
 - Borrow on hot paths; avoid copying entire catalogs or results for a row update.
 - Keep original-manager imports read-only. Export must not overwrite the source config.
   Do not silently delete, rename or move game files to implement an option.
-- Keep binary record schemas separate from domain structs. WHM1 changes require an
-  explicit format version and migration; preserve the frozen compatibility fixture.
+- Keep binary record schemas separate from domain structs. WHM schema changes require
+  a new format version and migration; WHM1 is decode-only. Preserve the frozen v1, v2
+  and v3 compatibility fixtures.
 - Validate binary data before accessing it, retain atomic replacement and backup
   behavior, and never overwrite a damaged library with an empty fallback.
-- Language preferences use the separate WHP1 record; do not silently alter WHM1 to
-  store UI preferences. Demo mode must not write user settings.
+- Language preferences use the separate WHP1 record; do not store UI preferences in the
+  WHM library (WHM2 holds library state and game start options only). Demo mode must
+  not write user settings.
 - OS error details and third-party messages may retain their original language;
   application-owned explanations must be bilingual. CLI defaults to English.
 
@@ -128,3 +135,29 @@ quality checks in `ci.yml` (pushes/PRs targeting `main`) and Windows release pac
 in `release.yml` (an existing published GitHub Release).
 Confirm that the executable artifact belongs to the final branch commit. Distinguish
 successful Windows compilation from an actual game-launch/runtime verification.
+
+## Windows GUI from WSL 2
+
+From WSL 2, build and run the native Windows GUI with the Windows-side toolchain
+through interop. Do not cross-compile from Linux. Windows needs rustup (MSVC host),
+Visual Studio Build Tools and the Windows SDK. GPUI's build script uses `fxc.exe`
+from that SDK.
+
+```sh
+WIN_HOME=$(wslpath "$(cmd.exe /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')")
+export CARGO_TARGET_DIR="$WIN_HOME/AppData/Local/wh3-target"
+export WSLENV=CARGO_TARGET_DIR/p   # /p translates the path for Windows processes
+"$WIN_HOME/.cargo/bin/cargo.exe" build -p wh3-mod-manager --locked
+"$CARGO_TARGET_DIR/debug/wh3-mod-manager.exe" --demo=500 &
+```
+
+- Keep the target directory on the Windows disk. Building into `\\wsl.localhost` is
+  slow and can fail. Sources may stay in WSL.
+- Use `--demo=N` unless the task needs real data. Without it, the app reads the real
+  game folder and settings, and Save/Play act on them.
+- Check the window with `powershell.exe -NoProfile -Command "Get-Process wh3-mod-manager
+  | Select-Object Id,MainWindowTitle,Responding"`. Stop it with `Stop-Process`.
+- `rust-toolchain.toml` makes the Windows rustup sync `stable`, so the Windows compiler
+  may be newer than the one in WSL.
+- A WSLg launch of the Linux build is not a Windows runtime check. A demo-mode window
+  is not a game-launch check.
