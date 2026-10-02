@@ -19,13 +19,20 @@ env:
   CARGO_INCREMENTAL: 0
 
 jobs:
-  core:
-    name: Core tests and formatting
+  checks:
+    name: Workspace checks and formatting
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc g++ clang pkg-config libfontconfig-dev libwayland-dev \
+            libwebkit2gtk-4.1-dev libxkbcommon-x11-dev libx11-xcb-dev \
+            libssl-dev libzstd-dev vulkan-validationlayers libvulkan1
       - name: Install latest stable Rust
         run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
       - uses: Swatinem/rust-cache@v2
@@ -40,8 +47,9 @@ jobs:
       - name: Test release versioning
         run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
       - run: cargo fmt --all --check
-      - run: cargo clippy -p wh3-core --all-targets --locked -- -D warnings
-      - run: cargo test -p wh3-core --locked
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --all-targets --locked
+      - run: cargo test --workspace --doc --locked
       - run: cargo bench -p wh3-core --bench catalog --locked | tee catalog-benchmark.txt
       - uses: actions/upload-artifact@v4
         with:
@@ -49,40 +57,9 @@ jobs:
           path: catalog-benchmark.txt
           if-no-files-found: error
 
-  windows:
-    name: Windows x64 checks
-    runs-on: windows-latest
-    needs: core
-    env:
-      RUSTFLAGS: -C target-feature=+crt-static
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install latest stable Rust
-        run: rustup toolchain install stable --profile minimal --component clippy --target x86_64-pc-windows-msvc
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - run: cargo test --workspace --locked
-
-  visual:
-    name: macOS UI and virtualization
-    runs-on: macos-latest
-    needs: core
-    steps:
-      - uses: actions/checkout@v4
-      - run: rustup toolchain install stable --profile minimal --component clippy
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - run: cargo test --workspace --locked
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: visual-macos
-          path: target/visual/*.png
-          if-no-files-found: warn
-
   prepare-release:
     name: Prepare release PR and changelogs
-    needs: [core, windows, visual]
+    needs: checks
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

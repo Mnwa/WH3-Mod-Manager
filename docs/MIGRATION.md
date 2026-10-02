@@ -28,10 +28,13 @@ This is a standalone Rust application; Electron is not included in the distribut
 | Workshop | Open a mod's page; Steamworks downloads, updates and subscriptions remain unported |
 | WH3 launch | Windows, direct Warhammer3.exe launch with a separate list; real-game verification remains outstanding |
 | Release preparation | Sampo changesets, synchronized Cargo versions and per-package changelogs in a draft release PR after successful main CI |
-| Builds | `ci.yml` checks quality on main pushes/PRs; `release.yml` builds Windows x64 assets from an existing published GitHub Release and attaches exe, ZIP and checksums; unsigned |
+| Builds | `ci.yml` runs Ubuntu-only workspace Clippy and tests with `--all-targets`, plus doc tests, on main pushes/PRs; `release.yml` builds Windows x64 assets from an existing published GitHub Release and attaches exe, ZIP and checksums; unsigned |
 
 ## First-stage limitations
 
+- CI does not check Windows or macOS targets. Metal screenshot tests are skipped on
+  Ubuntu and must be run locally on macOS; `--all-targets` selects Cargo targets,
+  not operating systems.
 - WH3/Steam is supported. Other Total War games and game launch through Linux/Proton
   or macOS are not ported.
 - No DB/LOC editor, pack editor, mod merging, compatibility tables, DB-reference

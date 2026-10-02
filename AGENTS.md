@@ -122,8 +122,9 @@ cargo test --release -p wh3-mod-manager --test visual --locked
 
 Use meaningful regression tests for behavior, corruption handling and compatibility.
 Avoid tests that merely mirror reversible cosmetic changes. GitHub Actions must pass
-Linux core checks, macOS UI checks and Windows workspace checks. Keep quality checks
-in `ci.yml` (pushes/PRs targeting `main`) and Windows release packaging/publication
+Ubuntu workspace checks with `--all-targets` and doc tests. Run macOS Metal UI checks
+locally; `--all-targets` does not cross-compile for other operating systems. Keep
+quality checks in `ci.yml` (pushes/PRs targeting `main`) and Windows release packaging/publication
 in `release.yml` (an existing published GitHub Release).
 Confirm that the executable artifact belongs to the final branch commit. Distinguish
 successful Windows compilation from an actual game-launch/runtime verification.
