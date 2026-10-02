@@ -1,19 +1,72 @@
 //! One virtualized row of the mod table.
-use super::header::{
-    AUTHOR_WIDTH, CHECK_WIDTH, ORDER_WIDTH, PACK_WIDTH, SIZE_WIDTH, THUMB_WIDTH, UPDATED_WIDTH,
-};
+use super::header::{CHECK_WIDTH, ORDER_WIDTH};
 use super::{Manager, order::DraggedMod, view::cell};
 use crate::theme;
 use gpui_kit::{
     assets::IconName,
-    component::{
-        Disableable, Icon, Sizable, checkbox::Checkbox, menu::ContextMenuExt, tooltip::Tooltip,
-    },
+    component::{Disableable, Icon, Sizable, checkbox::Checkbox, menu::ContextMenuExt},
     prelude::*,
     *,
 };
 use std::time::SystemTime;
-use wh3_core::{catalog::Source, localization::Language};
+use wh3_core::{
+    catalog::Source,
+    localization::Language,
+    preferences::{Column, Density},
+};
+
+/// Row and thumbnail sizes for a row-size preference.
+#[derive(Clone, Copy)]
+pub(super) struct Metrics {
+    pub row: f32,
+    pub thumb: f32,
+    pub large_text: bool,
+}
+
+impl Metrics {
+    pub fn of(density: Density) -> Self {
+        match density {
+            Density::Compact => Self {
+                row: 30.,
+                thumb: 22.,
+                large_text: false,
+            },
+            Density::Comfortable => Self {
+                row: theme::ROW_HEIGHT,
+                thumb: 32.,
+                large_text: false,
+            },
+            Density::Roomy => Self {
+                row: 60.,
+                thumb: 48.,
+                large_text: true,
+            },
+        }
+    }
+}
+
+/// How a row appears in a particular list.
+pub(super) struct Slot {
+    pub row: ElementId,
+    pub check: ElementId,
+    /// Two-list panes show only the title column.
+    pub compact: bool,
+    pub draggable: bool,
+    pub enables_on_drop: bool,
+}
+
+impl Slot {
+    /// The main table keeps the ids tests and accessibility rely on.
+    pub fn table(index: usize, draggable: bool) -> Self {
+        Self {
+            row: ("mod", index).into(),
+            check: ("check", index).into(),
+            compact: false,
+            draggable,
+            enables_on_drop: false,
+        }
+    }
+}
 
 /// Coarse relative age, like the original's "~N ago" column.
 fn age(language: Language, modified: Option<SystemTime>) -> String {
@@ -30,26 +83,24 @@ fn age(language: Language, modified: Option<SystemTime>) -> String {
     }
 }
 
-/// An icon with a tooltip; badges explain row state without extra columns.
-pub(super) fn badge(
-    id: (&'static str, usize),
-    icon: IconName,
-    color: Hsla,
-    tip: String,
-) -> impl IntoElement {
-    div()
-        .id(id)
-        .flex_shrink_0()
-        .child(Icon::new(icon).small().text_color(color))
-        .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+/// Pack size in MiB, or GiB once it no longer fits the column.
+fn size(language: Language, bytes: u64) -> String {
+    let mib = bytes as f64 / 1_048_576.;
+    if mib >= 1024. {
+        crate::ui_text!(language, "{:.1} GiB", "{:.1} ГБ", mib / 1024.)
+    } else {
+        crate::ui_text!(language, "{:.1} MiB", "{:.1} МБ", mib)
+    }
 }
 
 impl Manager {
-    fn thumbnail(&self, index: usize) -> AnyElement {
+    fn thumbnail(&self, index: usize, side: f32) -> AnyElement {
         let frame = div()
-            .size(px(32.))
+            .size(px(side))
             .rounded_sm()
             .overflow_hidden()
+            .border_1()
+            .border_color(theme::border())
             .bg(theme::thumbnail())
             .flex()
             .items_center()
@@ -57,7 +108,11 @@ impl Manager {
         match &self.catalog.mods[index].thumbnail {
             // GPUI decodes and caches the image off the UI thread.
             Some(path) => frame
-                .child(img(path.clone()).size(px(32.)).object_fit(ObjectFit::Cover))
+                .child(
+                    img(path.clone())
+                        .size(px(side))
+                        .object_fit(ObjectFit::Cover),
+                )
                 .into_any_element(),
             None => frame
                 .child(
@@ -69,89 +124,40 @@ impl Manager {
         }
     }
 
-    fn badges(&self, index: usize) -> Vec<AnyElement> {
-        let l = self.language;
-        let item = &self.catalog.mods[index];
-        let mut badges = Vec::new();
-        if self.is_always_enabled(index) {
-            badges.push(
-                badge(
-                    ("always", index),
-                    IconName::Lock,
-                    theme::always_enabled(),
-                    l.text("Always enabled", "Всегда включён").into(),
-                )
-                .into_any_element(),
-            );
-        }
-        if item.movie {
-            badges.push(badge(("movie", index), IconName::Film, theme::warning(), l.text(
-                "Movie pack: loads with high priority; movie packs in data always load",
-                "Movie pack: загружается с высоким приоритетом; movie packs из data загружаются всегда",
-            ).into()).into_any_element());
-        }
-        if let Some(files) = self.compat.outdated.get(&index) {
-            badges.push(
-                badge(
-                    ("outdated", index),
-                    IconName::Clock,
-                    theme::warning(),
-                    crate::ui_text!(
-                        l,
-                        "Older than the last game update and overwrites {} vanilla DB/Lua files, e.g. {}",
-                        "Старше последнего обновления игры и перезаписывает ванильных DB/Lua-файлов: {}, например {}",
-                        files.len(),
-                        files.first().map(String::as_str).unwrap_or_default()
-                    ),
-                )
-                .into_any_element(),
-            );
-        }
-        if self.steam.outdated.contains(&index) {
-            badges.push(
-                badge(
-                    ("update", index),
-                    IconName::Download,
-                    theme::accent(),
-                    l.text(
-                        "A newer version is on the Workshop; right-click → Update from Workshop",
-                        "В Workshop есть новая версия; правый клик → Обновить из Workshop",
-                    )
-                    .into(),
-                )
-                .into_any_element(),
-            );
-        }
-        badges.extend(self.compat_badges(index));
-        badges
-    }
-
-    pub(super) fn row(&self, position: usize, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let index = self.visible[position];
+    /// One mod row. `slot` keeps ids unique per list and says how the row behaves there.
+    pub(super) fn mod_row(&self, index: usize, slot: Slot, cx: &mut Context<Self>) -> AnyElement {
         let item = &self.catalog.mods[index];
         let l = self.language;
         let title = SharedString::from(item.title.clone());
         let always = self.is_always_enabled(index);
-        let draggable = self.sort.is_load_order() && !self.busy;
+        let enabled = self.enabled.contains(&index);
+        let draggable = slot.draggable && !self.busy;
+        let metrics = Metrics::of(self.prefs.density);
         let pack_color = match item.source {
+            Source::Data if item.linked => theme::accent(),
             Source::Data => theme::data_pack(),
             Source::Workshop => theme::muted(),
             Source::Custom => theme::accent(),
         };
+        let enables_on_drop = slot.enables_on_drop;
+        let width = |column| self.prefs.width(column) as f32;
         div()
-            .id(("mod", index))
+            .id(slot.row)
             .w_full()
             .flex()
             .items_center()
-            .h(px(theme::ROW_HEIGHT))
+            .h(px(metrics.row))
             .pr(px(12.))
             .border_b_1()
             .border_color(theme::border())
-            .when(
-                self.selected == Some(index) || self.marked.contains(&index),
-                |row| row.bg(theme::selection()),
-            )
-            .hover(|row| row.bg(theme::selection()))
+            .when(metrics.large_text, |row| row.text_base())
+            .map(|row| {
+                if self.selected == Some(index) || self.marked.contains(&index) {
+                    row.bg(theme::selection())
+                } else {
+                    row.hover(|row| row.bg(theme::raised()))
+                }
+            })
             .when(draggable, |row| {
                 row.on_drag(
                     DraggedMod {
@@ -164,7 +170,11 @@ impl Manager {
                     style.border_t_2().border_color(theme::accent())
                 })
                 .on_drop(cx.listener(move |this, dragged: &DraggedMod, _, cx| {
-                    this.move_onto(dragged.index, index, cx)
+                    this.move_onto(dragged.index, index, cx);
+                    // Dropping a disabled mod among the enabled ones enables it.
+                    if enables_on_drop && !this.enabled.contains(&dragged.index) {
+                        this.toggle(dragged.index, cx);
+                    }
                 }))
             })
             .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
@@ -179,7 +189,7 @@ impl Manager {
                     .items_center()
                     .gap_1()
                     .px_2()
-                    .text_color(theme::accent())
+                    .text_color(theme::muted())
                     .child(
                         Icon::new(IconName::GripVertical)
                             .xsmall()
@@ -193,8 +203,8 @@ impl Manager {
             )
             .child(
                 div().w(px(CHECK_WIDTH)).flex_shrink_0().child(
-                    Checkbox::new(("check", index))
-                        .checked(self.enabled.contains(&index))
+                    Checkbox::new(slot.check)
+                        .checked(enabled)
                         .disabled(self.busy)
                         .accessibility_label(crate::ui_text!(
                             l,
@@ -207,9 +217,9 @@ impl Manager {
             )
             .child(
                 div()
-                    .w(px(THUMB_WIDTH))
+                    .w(px(metrics.thumb + 16.))
                     .flex_shrink_0()
-                    .child(self.thumbnail(index)),
+                    .child(self.thumbnail(index, metrics.thumb)),
             )
             .child(
                 div()
@@ -225,21 +235,31 @@ impl Manager {
                             .overflow_hidden()
                             .text_ellipsis()
                             .whitespace_nowrap()
-                            .when(always, |title| title.text_color(theme::always_enabled()))
+                            // Enabled mods read brighter, so what will load stands out.
+                            .text_color(if always {
+                                theme::always_enabled()
+                            } else if enabled {
+                                theme::text()
+                            } else {
+                                theme::text_dim()
+                            })
                             .child(title),
                     )
                     .children(self.badges(index)),
             )
-            .child(cell(item.name.clone(), PACK_WIDTH).text_color(pack_color))
-            .child(cell(item.metadata.author.clone(), AUTHOR_WIDTH).text_color(theme::muted()))
-            .child(cell(age(l, item.modified), UPDATED_WIDTH).text_color(theme::muted()))
-            .child(
-                cell(
-                    crate::ui_text!(l, "{:.1} MiB", "{:.1} МБ", item.size as f64 / 1_048_576.),
-                    SIZE_WIDTH,
-                )
-                .text_color(theme::muted()),
-            )
+            .when(!slot.compact, |row| {
+                row.child(cell(item.name.clone(), width(Column::Pack)).text_color(pack_color))
+                    .child(
+                        cell(item.metadata.author.clone(), width(Column::Author))
+                            .text_color(theme::muted()),
+                    )
+                    .child(
+                        cell(age(l, item.modified), width(Column::Updated))
+                            .text_color(theme::muted()),
+                    )
+                    .child(cell(size(l, item.size), width(Column::Size)).text_color(theme::muted()))
+            })
             .context_menu(self.row_menu(index, cx))
+            .into_any_element()
     }
 }

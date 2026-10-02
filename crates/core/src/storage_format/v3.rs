@@ -1,16 +1,18 @@
-//! WHM3 adds user load-order rules and switched-off pack rules to WHM2.
-use super::{frame, invalid, records::*};
+//! Frozen WHM3 schema (WHM2 plus load-order rules): decoded for migration only.
+use super::{invalid, records::*};
 use crate::{
     Result,
     load_order::Rule,
     storage::{GameOptions, Settings},
 };
 use rkyv::with::{InlineAsBox, Map};
-use rkyv::{Archive, Serialize, rancor::Error as ArchiveError};
+use rkyv::{Archive, rancor::Error as ArchiveError};
 
 pub(super) const MAGIC: &[u8; 4] = b"WHM3";
 
-#[derive(Archive, Serialize)]
+// Only the archived form is read; the native struct defines the frozen layout.
+#[expect(dead_code)]
+#[derive(Archive)]
 struct StateRecord<'a> {
     #[rkyv(with = Map<InlineAsBox>)]
     game: Option<&'a str>,
@@ -33,7 +35,7 @@ struct StateRecord<'a> {
     disabled_rule_packs: Vec<&'a str>,
 }
 
-#[derive(Archive, Serialize)]
+#[derive(Archive)]
 struct RuleRecord<'a> {
     #[rkyv(with = InlineAsBox)]
     before: &'a str,
@@ -41,39 +43,6 @@ struct RuleRecord<'a> {
     after: &'a str,
     #[rkyv(with = InlineAsBox)]
     subject: &'a str,
-}
-
-pub(super) fn encode(settings: &Settings) -> Result<Vec<u8>> {
-    let record = StateRecord {
-        game: settings.game_path.as_deref().map(path_str).transpose()?,
-        roots: root_records(&settings.roots)?,
-        presets: settings
-            .presets
-            .iter()
-            .map(preset_record)
-            .collect::<Result<_>>()?,
-        current: settings.current.as_ref().map(preset_record).transpose()?,
-        metadata: meta_records(&settings.metadata),
-        hidden: settings.hidden.iter().map(String::as_str).collect(),
-        always_enabled: settings.always_enabled.iter().map(String::as_str).collect(),
-        options: settings.options.bits(),
-        rules: settings
-            .rules
-            .iter()
-            .map(|rule| RuleRecord {
-                before: &rule.before,
-                after: &rule.after,
-                subject: &rule.subject,
-            })
-            .collect(),
-        disabled_rules: settings.disabled_rules.iter().map(String::as_str).collect(),
-        disabled_rule_packs: settings
-            .disabled_rule_packs
-            .iter()
-            .map(String::as_str)
-            .collect(),
-    };
-    frame(MAGIC, &record)
 }
 
 pub(super) fn decode(payload: &[u8]) -> Result<Settings> {
@@ -91,7 +60,7 @@ pub(super) fn decode(payload: &[u8]) -> Result<Settings> {
             .iter()
             .map(|s| s.to_string())
             .collect(),
-        options: GameOptions::from_bits(record.options.to_native()).ok_or_else(invalid)?,
+        options: GameOptions::from_legacy_bits(record.options.to_native()).ok_or_else(invalid)?,
         rules: record
             .rules
             .iter()

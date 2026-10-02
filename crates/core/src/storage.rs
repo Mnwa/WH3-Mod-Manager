@@ -28,7 +28,8 @@ pub struct Settings {
     pub disabled_rule_packs: BTreeSet<String>,
 }
 
-/// Game start options persisted with the library (WHM2 `options` bit set).
+/// Game start options persisted with the library (`options` bit set since WHM2,
+/// `staging` since WHM4).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GameOptions {
@@ -37,18 +38,59 @@ pub struct GameOptions {
     pub auto_start_custom_battle: bool,
     pub close_on_play: bool,
     pub make_units_generals: bool,
+    /// Set the game's process priority to High once it starts (WHM4).
+    pub raise_priority: bool,
+    /// Delete the staged Workshop copies or links when the game exits (WHM4).
+    pub clean_up_staging: bool,
+    /// How enabled Workshop mods are prepared in the game folder at launch (WHM4).
+    pub staging: Staging,
+}
+
+/// Workshop mod staging, the original's `workshopModStagingMode`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Staging {
+    /// Load Workshop mods from their Steam folders.
+    #[default]
+    Off,
+    /// Copy enabled Workshop mods into `<game>/whmm_copied_mods` before launch.
+    Copy,
+    /// Link enabled Workshop mods into `<game>/whmm_copied_mods` before launch.
+    Symlink,
+}
+
+impl Staging {
+    pub fn code(self) -> u8 {
+        match self {
+            Self::Off => 0,
+            Self::Copy => 1,
+            Self::Symlink => 2,
+        }
+    }
+    pub fn from_code(code: u8) -> Option<Self> {
+        match code {
+            0 => Some(Self::Off),
+            1 => Some(Self::Copy),
+            2 => Some(Self::Symlink),
+            _ => None,
+        }
+    }
 }
 
 impl GameOptions {
-    const FLAGS: [u32; 5] = [1, 2, 4, 8, 16];
+    const FLAGS: [u32; 7] = [1, 2, 4, 8, 16, 32, 64];
+    /// WHM2 and WHM3 knew only the first five flags.
+    const LEGACY_MASK: u32 = 31;
 
-    fn fields(&self) -> [bool; 5] {
+    fn fields(&self) -> [bool; 7] {
         [
             self.skip_intro_movies,
             self.script_logging,
             self.auto_start_custom_battle,
             self.close_on_play,
             self.make_units_generals,
+            self.raise_priority,
+            self.clean_up_staging,
         ]
     }
 
@@ -72,7 +114,17 @@ impl GameOptions {
             auto_start_custom_battle: on(4),
             close_on_play: on(8),
             make_units_generals: on(16),
+            raise_priority: on(32),
+            clean_up_staging: on(64),
+            staging: Staging::Off,
         })
+    }
+
+    /// The option set of a frozen WHM2/WHM3 record.
+    pub(crate) fn from_legacy_bits(bits: u32) -> Option<Self> {
+        (bits & !Self::LEGACY_MASK == 0)
+            .then(|| Self::from_bits(bits))
+            .flatten()
     }
 }
 

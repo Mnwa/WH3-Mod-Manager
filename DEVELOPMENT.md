@@ -13,7 +13,12 @@ features and known differences from the original manager are tracked in
 - `crates/desktop` (`wh3-mod-manager`): the GPUI application. `manager/` is the mod
   management screen, `update/` the self-update slice, `assets.rs` the icon source.
 - `crates/core/assets`: the embedded WH3 DB schema and its `NOTICE`.
-- `docs/`: `MIGRATION.md` and the README screenshot.
+- `crates/desktop/assets`: `logo.svg` (the source of truth for the logo, shown in the
+  app and the READMEs), the generated `app.ico` and `windows/app.rc`, which `build.rs`
+  compiles into Windows builds together with version information from the package
+  version. After changing the logo, regenerate the icon with
+  `cargo run -p wh3-mod-manager --example render_icon --locked`.
+- `docs/`: `MIGRATION.md` and the README screenshots (English and Russian).
 
 ## Building and running
 
@@ -77,11 +82,25 @@ build need `steam_api64.dll` next to the executable: copy it from
 ## Persistence
 
 `library.whmm` uses rkyv records framed as magic, payload length and CRC32, validated
-with bytecheck. WHM3 is current; WHM1 and WHM2 are decode-only and migrate on the next
-save. Every save is atomic and keeps the previous generation as `library.whmm.bak`; a
-damaged library is reported and never replaced by an empty state. Frozen fixtures for
-every version live in `crates/core/tests/fixtures` and must not change. Language
-preferences use the separate WHP1 record. JSON is only used for interchange.
+with bytecheck. WHM4 is current; WHM1–WHM3 are decode-only and migrate on the next
+save, and each version rejects option bits it never had. Every save is atomic and
+keeps the previous generation as `library.whmm.bak`; a damaged library is reported and
+never replaced by an empty state. Frozen fixtures for every version live in
+`crates/core/tests/fixtures` and must not change. UI preferences (language, layout,
+row size, grouping, column widths) use the separate fixed-length WHP2 record in
+`preferences.whmp`; WHP1 (language only) is decoded for migration. JSON is only used
+for interchange.
+
+## Game folder writes
+
+Besides `wh3_rust_mods.txt`, the manager writes into the game folder only when the user
+asks: copies or links in `data` (`wh3_core::data_folder`, never overwriting, deleting
+only named top-level `.pack` files after confirmation) and the Workshop staging folder
+`whmm_copied_mods` (`wh3_core::staging`). Test these against a fake Steam library:
+create `<dir>/steamapps/common/WH3` with a stand-in `Warhammer3.exe` and `data`, put a
+few packs under `<dir>/steamapps/workshop/content/1142710/<id>/`, point a library in a
+throw-away `WH3MM_HOME` at it, and use a long-running stand-in process named
+`Warhammer3.exe` to exercise game detection, priority and cleanup after exit.
 
 ## Metadata from the original manager
 

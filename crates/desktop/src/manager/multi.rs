@@ -6,19 +6,18 @@ use std::collections::HashSet;
 
 impl Manager {
     pub(super) fn click_row(&mut self, index: usize, modifiers: Modifiers, cx: &mut Context<Self>) {
-        let position =
-            |manager: &Self, index: usize| manager.visible.iter().position(|&i| i == index);
+        // Shift ranges stay inside the list (pane) that was clicked.
+        let rows = self.pane_of(index);
+        let position = |index: usize| rows.iter().position(|&i| i == index);
         if modifiers.shift
-            && let (Some(anchor), Some(end)) = (
-                self.anchor.and_then(|a| position(self, a)),
-                position(self, index),
-            )
+            && let (Some(anchor), Some(end)) = (self.anchor.and_then(position), position(index))
         {
             let (from, to) = (anchor.min(end), anchor.max(end));
+            let range: Vec<usize> = rows[from..=to].to_vec();
             if !(modifiers.control || modifiers.platform) {
                 self.marked.clear();
             }
-            self.marked.extend(self.visible[from..=to].iter().copied());
+            self.marked.extend(range);
         } else if modifiers.control || modifiers.platform {
             if !self.marked.remove(&index) {
                 self.marked.insert(index);
@@ -35,7 +34,7 @@ impl Manager {
     }
 
     pub(super) fn select_all_visible(&mut self, cx: &mut Context<Self>) {
-        self.marked = self.visible.iter().copied().collect();
+        self.marked = self.shown().collect();
         cx.notify();
     }
 

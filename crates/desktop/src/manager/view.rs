@@ -11,9 +11,13 @@ use gpui_kit::{
     *,
 };
 
-pub(super) fn button(id: &'static str, label: &'static str, enabled: bool) -> Button {
+pub(super) fn button(id: &'static str, label: impl Into<SharedString>, enabled: bool) -> Button {
+    icon_button(id, enabled).label(label)
+}
+
+/// A small button without a label yet; callers add an icon and an accessible name.
+pub(super) fn icon_button(id: &'static str, enabled: bool) -> Button {
     Button::new(id)
-        .label(label)
         .small()
         .disabled(!enabled)
         .when(enabled, |b| b.cursor_pointer())
@@ -51,22 +55,26 @@ impl Manager {
         let key = &event.keystroke;
         let command = key.modifiers.control || key.modifiers.platform;
         if self.focus.is_focused(window) && !key.modifiers.alt {
+            let rows: Vec<usize> = match self.selected {
+                Some(index) => self.pane_of(index).to_vec(),
+                None => self.visible.clone(),
+            };
             let position = self
                 .selected
-                .and_then(|index| self.visible.iter().position(|&i| i == index));
+                .and_then(|index| rows.iter().position(|&i| i == index));
             if key.key == "up" || key.key == "down" {
                 let next = match position {
                     Some(position) if key.key == "up" => position.saturating_sub(1),
-                    Some(position) => (position + 1).min(self.visible.len().saturating_sub(1)),
+                    Some(position) => (position + 1).min(rows.len().saturating_sub(1)),
                     None => 0,
                 };
-                if let Some(&index) = self.visible.get(next) {
+                if let Some(&index) = rows.get(next) {
                     let modifiers = Modifiers {
                         shift: key.modifiers.shift,
                         ..Default::default()
                     };
                     self.click_row(index, modifiers, cx);
-                    self.scroll.scroll_to_item(next, ScrollStrategy::Nearest);
+                    self.scroll_to_row(index, next);
                 }
             }
             if key.key == "space"
@@ -100,6 +108,25 @@ impl Manager {
         }
     }
 
+    /// Scroll the list that shows `index`; `position` is its place in that pane.
+    fn scroll_to_row(&self, index: usize, position: usize) {
+        if self.dual_active() && self.enabled.contains(&index) {
+            self.enabled_scroll
+                .scroll_to_item(position, ScrollStrategy::Nearest);
+        } else if self.grouping_active() {
+            let row = self
+                .grouped
+                .iter()
+                .position(|row| matches!(row, super::groups::GroupRow::Mod(i) if *i == index));
+            if let Some(row) = row {
+                self.scroll.scroll_to_item(row, ScrollStrategy::Nearest);
+            }
+        } else {
+            self.scroll
+                .scroll_to_item(position, ScrollStrategy::Nearest);
+        }
+    }
+
     fn status_bar(&self) -> impl IntoElement + use<> {
         let l = self.language;
         div()
@@ -111,35 +138,53 @@ impl Manager {
             .px_3()
             .border_t_1()
             .border_color(theme::border())
+            .bg(theme::panel())
             .text_xs()
             .text_color(theme::muted())
             .child(crate::ui_text!(
                 l,
-                "{} / {} mods · {} enabled",
-                "{} / {} модов · включено {}",
-                self.visible.len(),
-                self.catalog.mods.len(),
-                self.enabled.len()
+                "Showing {} of {}",
+                "Показано {} из {}",
+                self.shown_count(),
+                self.catalog.mods.len()
             ))
+            .child(div().text_color(theme::brass()).child(crate::ui_text!(
+                l,
+                "{} enabled",
+                "Включено: {}",
+                self.enabled.len()
+            )))
+            .when(self.live.game_running, |bar| {
+                bar.child(
+                    div()
+                        .text_color(theme::success())
+                        .child(l.text("● Game running", "● Игра запущена")),
+                )
+            })
             .when(self.marked.len() > 1, |bar| {
                 bar.child(div().text_color(theme::accent()).child(crate::ui_text!(
                     l,
                     "{} selected",
-                    "выбрано {}",
+                    "Выбрано: {}",
                     self.marked.len()
                 )))
             })
             .child(
                 div()
                     .flex_1()
+                    .min_w_0()
                     .truncate()
                     .child(self.status.text(l).to_owned()),
             )
             .when(self.dirty, |bar| {
                 bar.child(
                     div()
+                        .flex_shrink_0()
                         .text_color(theme::warning())
-                        .child(l.text("● Unsaved", "● Не сохранено")),
+                        .child(l.text(
+                            "● Unsaved changes (Play or Ctrl+S saves)",
+                            "● Есть несохранённые изменения («Играть» или Ctrl+S сохранят)",
+                        )),
                 )
             })
     }

@@ -1,10 +1,18 @@
 //! Mod-management screen: library state, background jobs and the views that render it.
 mod actions;
+mod badges;
 mod categories;
+mod columns;
 mod compat;
+mod data_menu;
 mod dialogs;
+mod empty;
 mod flags;
+mod game_folder;
+mod groups;
 mod header;
+mod hunt;
+mod hunt_view;
 mod jobs;
 mod language;
 mod launch;
@@ -12,19 +20,30 @@ mod list;
 mod metadata;
 mod multi;
 mod order;
+mod panes;
 mod persistence;
+mod play_controls;
+mod preset_view;
 mod presets;
 mod query;
+mod reinstall;
 mod report;
 mod row;
 mod row_menu;
+mod row_menu_data;
 mod rules;
 mod rules_view;
 mod selection;
+mod settings_menu;
+mod settings_staging;
+mod sharing;
 mod sidebar;
+mod staging_control;
 mod steam;
 mod toolbar;
 mod view;
+mod view_menu;
+mod watching;
 mod workshop_menu;
 
 use crate::update::Updater;
@@ -89,6 +108,18 @@ pub struct Manager {
     pub(super) status: Message,
     pub(super) language: wh3_core::localization::Language,
     pub(super) preferences_task: Option<Task<()>>,
+    /// The debounced preferences write.
+    pub(super) preferences_save: Option<Task<()>>,
+    /// Language, layout, row size and column widths (WHP2).
+    pub(super) prefs: wh3_core::preferences::Preferences,
+    /// Enabled mods in load order for the right pane of the two-list layout.
+    pub(super) visible_enabled: Vec<usize>,
+    /// Category groups of the main list, rebuilt with the query, not per frame.
+    pub(super) groups: Arc<Vec<(Arc<str>, Vec<usize>)>>,
+    /// Collapsed category groups; all start collapsed, like the original.
+    pub(super) collapsed: Option<std::collections::HashSet<Arc<str>>>,
+    /// Whether symbolic links can be created (administrator or Developer Mode).
+    pub(super) can_link: bool,
     pub(super) preferences_busy: bool,
     pub(super) diagnostics: Vec<Message>,
     pub(super) details: Vec<Message>,
@@ -101,6 +132,8 @@ pub struct Manager {
     pub(super) dirty: bool,
     pub(super) focus: FocusHandle,
     pub(super) scroll: UniformListScrollHandle,
+    pub(super) enabled_scroll: UniformListScrollHandle,
+    pub(super) grouped: Vec<groups::GroupRow>,
     pub(super) report_scroll: UniformListScrollHandle,
     pub(super) preset_scroll: UniformListScrollHandle,
     pub(super) cancel: Arc<AtomicBool>,
@@ -112,6 +145,10 @@ pub struct Manager {
     pub(super) launch: launch::State,
     pub(super) steam: steam::State,
     pub(super) rules: rules::State,
+    /// Folder watching, game process state and a launch queued until the game closes.
+    pub(super) live: watching::State,
+    /// The running problem-mod search, if any.
+    pub(super) hunt: Option<hunt::State>,
     pub(super) updater: Entity<Updater>,
     pub(super) window_title: String,
     pub(super) _subscriptions: Vec<Subscription>,

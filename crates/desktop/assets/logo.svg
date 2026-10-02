@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>WH3 Mod Manager</title>
+  <defs>
+    <linearGradient id="iron" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f3540"/>
+      <stop offset="1" stop-color="#181b21"/>
+    </linearGradient>
+  </defs>
+  <!-- A heater shield in gunmetal and brass. -->
+  <path d="M32 3 L57 9.5 V29 C57 44.5 47 55.5 32 61 C17 55.5 7 44.5 7 29 V9.5 Z"
+        fill="url(#iron)" stroke="#d4a64a" stroke-width="3.5" stroke-linejoin="round"/>
+  <!-- Three packs in load order: the first one wins, so it shines brightest. -->
+  <rect x="16" y="16" width="32" height="8" rx="2" fill="#f2cb6c"/>
+  <rect x="18.5" y="28" width="27" height="8" rx="2" fill="#c8963a"/>
+  <rect x="22" y="40" width="20" height="8" rx="2" fill="#8a6427"/>
+</svg>

@@ -1,5 +1,5 @@
 //! Compatibility check of enabled mods and outdated-mod detection.
-use super::{Manager, row::badge};
+use super::{Manager, badges::badge};
 use crate::theme;
 use gpui_kit::{assets::IconName, *};
 use std::{
@@ -192,12 +192,12 @@ impl Manager {
                 match result {
                     Ok((sections, issues, warnings)) => {
                         this.status = message!(
-                            "Overwritten files: {} · colliding DB keys: {} · dependency problems: {} · startpos: {}. An overlap does not always mean incompatibility.",
-                            "Перезаписанных файлов: {} · совпадающих DB-ключей: {} · проблем зависимостей: {} · startpos: {}. Совпадение не всегда означает несовместимость.",
-                            sections.files.len(),
-                            sections.keys.len(),
+                            "Check finished: {} missing requirements, {} start-position conflicts, {} overwritten files, {} overridden DB rows. Overlaps are often intended.",
+                            "Проверка завершена: не хватает модов — {}, конфликтов стартовой позиции — {}, перезаписанных файлов — {}, перекрытых DB-строк — {}. Перекрытия часто задуманы.",
                             sections.dependencies.len(),
-                            sections.startpos.len()
+                            sections.startpos.len(),
+                            sections.files.len(),
+                            sections.keys.len()
                         );
                         this.report_tab = if !sections.dependencies.is_empty() { Tab::Dependencies } else { Tab::Files };
                         this.compat = State {
@@ -275,8 +275,8 @@ impl Manager {
                     theme::danger(),
                     crate::ui_text!(
                         l,
-                        "Missing dependencies: {}",
-                        "Не хватает зависимостей: {}",
+                        "Needs {} mods that are disabled or not installed",
+                        "Нужны отключённые или не установленные моды: {}",
                         issues.missing_dependencies + issues.missing_required
                     ),
                 )
@@ -293,7 +293,7 @@ impl Manager {
                     issues.keys_overwritten,
                     issues.overwrites,
                     issues.keys_overwrites,
-                    if issues.startpos { " · startpos" } else { "" }
+                    if issues.startpos { l.text(" · also replaces the campaign start position", " · также заменяет стартовую позицию кампании") } else { "" }
                 ))
                 .into_any_element(),
             );

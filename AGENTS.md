@@ -59,6 +59,8 @@ workspace rather than creating empty layers:
   Use model methods to change shared state and scope notifications to affected views.
 - Never block the GUI thread with filesystem access, pack parsing, serialization,
   conflict analysis, large searches or Steam calls. Use `cx.background_spawn`.
+- Process checks (`tasklist`, `taskkill`, priority) and file watching run off the GUI
+  thread; spawned helpers use `CREATE_NO_WINDOW` so no console flashes.
 - Never initialise Steamworks in the GUI process: it would present the manager as the
   running game. Steam requests go through `wh3_core::workshop::call`, which runs the
   `--steam-worker` child; keep `steam_api64.dll` delay-loaded.
@@ -93,15 +95,23 @@ workspace rather than creating empty layers:
   code behind `cfg` and ensure other targets compile without warnings.
 - Borrow on hot paths; avoid copying entire catalogs or results for a row update.
 - Keep original-manager imports read-only. Export must not overwrite the source config.
-  Do not silently delete, rename or move game files to implement an option.
+- Game-folder writes are allowed only for explicit, user-visible features, as in the
+  original manager: the manager's mod list, copies or links in `data` the user asked
+  for, and the `whmm_copied_mods` staging folder. Never touch vanilla packs, never
+  overwrite an existing file in `data`, never follow a link when deleting, and limit
+  deletion to top-level `.pack` files the action names (or the whole staging folder).
+  Ask for confirmation before deleting from `data`, report every skipped or failed
+  file, and do not delete staged files while the game may be running.
 - Keep binary record schemas separate from domain structs. WHM schema changes require
-  a new format version and migration; WHM1 is decode-only. Preserve the frozen v1, v2
-  and v3 compatibility fixtures.
+  a new format version and migration; WHM1–WHM3 are decode-only. Preserve the frozen
+  v1–v4 compatibility fixtures and reject option bits a record version never had.
 - Validate binary data before accessing it, retain atomic replacement and backup
   behavior, and never overwrite a damaged library with an empty fallback.
-- Language preferences use the separate WHP1 record; do not store UI preferences in the
-  WHM library (WHM2 holds library state and game start options only). Demo mode must
-  not write user settings.
+- UI preferences (language, list layout, row size, category grouping, column widths)
+  use the separate fixed-length WHP2 record; WHP1 (language only) is decode-only. Do
+  not store UI preferences in the WHM library, which holds library state and game
+  start options only. Debounce preference writes. Demo mode must not write user
+  settings.
 - OS error details and third-party messages may retain their original language;
   application-owned explanations must be bilingual. CLI defaults to English.
 

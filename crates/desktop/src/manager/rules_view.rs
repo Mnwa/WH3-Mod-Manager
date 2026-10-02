@@ -110,8 +110,14 @@ impl Manager {
             let this = entity.read(cx);
             let resolution = this.rules.resolution.clone();
             let mut rows: Vec<AnyElement> = Vec::new();
-            let section = |text: &'static str| div().mt_2().text_xs().text_color(theme::muted()).child(text).into_any_element();
-            rows.push(section(l.text("YOUR RULES", "ВАШИ ПРАВИЛА")));
+            let section = |text: &'static str| div().mt_2().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(theme::muted()).child(text).into_any_element();
+            rows.push(section(l.text("Your rules", "Ваши правила")));
+            if this.settings.rules.is_empty() {
+                rows.push(div().text_sm().text_color(theme::muted()).child(l.text(
+                    "None yet. Right-click a mod and choose Load before… or Load after…",
+                    "Пока нет. Нажмите на мод правой кнопкой → «Загружать перед…» или «Загружать после…»",
+                )).into_any_element());
+            }
             for (i, rule) in this.settings.rules.iter().enumerate() {
                 let (manager, rule_copy) = (manager.clone(), rule.clone());
                 rows.push(
@@ -134,7 +140,13 @@ impl Manager {
                         .into_any_element(),
                 );
             }
-            rows.push(section(l.text("RULES FROM MODS", "ПРАВИЛА ИЗ МОДОВ")));
+            rows.push(section(l.text("Rules shipped with mods (untick to ignore)", "Правила из модов (снимите галочку, чтобы игнорировать)")));
+            if this.rules.pack_rules.is_empty() {
+                rows.push(div().text_sm().text_color(theme::muted()).child(l.text(
+                    "None of your mods ship load-order rules.",
+                    "Ни один из ваших модов не содержит правил порядка.",
+                )).into_any_element());
+            }
             for (i, rule) in this.rules.pack_rules.iter().enumerate() {
                 let enabled = !this.settings.disabled_rules.contains(rule.key().as_str());
                 let source = match &rule.source {
@@ -153,7 +165,7 @@ impl Manager {
                 );
             }
             if !resolution.dropped.is_empty() || !this.rules.overridden.is_empty() {
-                rows.push(section(l.text("NOT APPLIED", "НЕ ПРИМЕНЯЮТСЯ")));
+                rows.push(section(l.text("Not applied", "Не применяются")));
                 for (rule, why) in &resolution.dropped {
                     rows.push(div().text_xs().text_color(theme::warning()).child(format!("{} · {}", describe(rule), reason(l, why))).into_any_element());
                 }

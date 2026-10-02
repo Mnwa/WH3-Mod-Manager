@@ -16,14 +16,15 @@ impl Manager {
         let search = cx.new(|cx| {
             InputState::new(window, cx).placeholder(
                 wh3_core::localization::Language::default().text(
-                    "Search by name, pack or Workshop ID…",
-                    "Поиск по названию, pack или Workshop ID…",
+                    "Search by title, author, pack or Workshop ID (Ctrl+F)",
+                    "Поиск по названию, автору, pack или Workshop ID (Ctrl+F)",
                 ),
             )
         });
         let preset_name = cx.new(|cx| {
             InputState::new(window, cx).placeholder(
-                wh3_core::localization::Language::default().text("Preset name", "Название пресета"),
+                wh3_core::localization::Language::default()
+                    .text("New preset name", "Название нового пресета"),
             )
         });
         let subscription = cx.subscribe(&search, |this: &mut Self, _, event, cx| {
@@ -57,6 +58,12 @@ impl Manager {
             settings: Default::default(),
             language: Default::default(),
             preferences_task: None,
+            preferences_save: None,
+            prefs: Default::default(),
+            visible_enabled: vec![],
+            groups: Arc::default(),
+            collapsed: None,
+            can_link: false,
             preferences_busy: false,
             status: wh3_core::message!("Loading…", "Загрузка…"),
             diagnostics: vec![],
@@ -70,6 +77,8 @@ impl Manager {
             dirty: false,
             focus: cx.focus_handle(),
             scroll: UniformListScrollHandle::new(),
+            enabled_scroll: UniformListScrollHandle::new(),
+            grouped: vec![],
             report_scroll: UniformListScrollHandle::new(),
             preset_scroll: UniformListScrollHandle::new(),
             cancel: Arc::new(AtomicBool::new(false)),
@@ -81,12 +90,16 @@ impl Manager {
             launch: Default::default(),
             steam: Default::default(),
             rules: Default::default(),
+            live: Default::default(),
+            hunt: None,
             updater,
             window_title: String::new(),
             _subscriptions: vec![subscription, restart, update_phase],
             rendered_rows: 0,
         };
         this.load_language(window, cx);
+        this.start_live_updates(cx);
+        this.probe_links(cx);
         let cancel = this.cancel.clone();
         let task = cx.background_spawn(async move {
             if let Some(count) = demo {
@@ -142,9 +155,18 @@ impl Manager {
             version: None,
         });
         self.apply_preset(&preset, cx);
-        self.diagnostics.extend(scan.warnings);
+        // Automatic rescans repeat the same warnings; keep each one once.
+        for warning in scan.warnings {
+            let english = wh3_core::localization::Language::English;
+            if !self
+                .diagnostics
+                .iter()
+                .any(|m| m.text(english) == warning.text(english))
+            {
+                self.diagnostics.push(warning);
+            }
+        }
         self.rebuild_workshop_ids();
-        self.after_steam_rescan();
         self.refresh_outdated(cx);
         self.refresh_workshop(cx);
         self.scan_pack_rules(cx);
@@ -161,6 +183,12 @@ impl Manager {
                 self.diagnostics.len()
             )
         };
+        // Follow-ups report their own outcome, so they run after the scan summary.
+        self.finish_refresh_from_disk(cx);
+        self.after_steam_rescan();
+        self.finish_shared_import(cx);
+        self.continue_reinstall(cx);
+        self.follow_folders(cx);
         cx.notify();
     }
 
