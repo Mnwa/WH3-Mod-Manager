@@ -23,6 +23,9 @@ fn enabled() -> bool {
     true
 }
 
+/// Preset version whose list order is the launch order (written by this manager).
+pub const LIST_ORDER_VERSION: u32 = 3;
+
 pub struct Applied {
     pub order: Vec<usize>,
     pub enabled: HashSet<usize>,
@@ -60,7 +63,7 @@ impl Preset {
     ) -> Self {
         Self {
             name,
-            version: Some(2),
+            version: Some(LIST_ORDER_VERSION),
             mods: order
                 .iter()
                 .filter_map(|&index| {
@@ -105,33 +108,75 @@ impl Preset {
         result
     }
 
+    /// The launch order the entries describe, mirroring how each writer meant it.
     fn ordered_entries(&self) -> Vec<&Entry> {
-        if self.version.is_some() {
-            return self.mods.iter().collect();
-        }
-        // Before version 2, the original sorted names and inserted pinned positions.
-        let mut sorted: Vec<_> = self.mods.iter().collect();
-        sorted.sort_by_cached_key(|entry| entry.name.to_lowercase());
-        let (mut pinned, unpinned): (Vec<_>, Vec<_>) = sorted
-            .into_iter()
-            .partition(|entry| entry.load_order.is_some());
-        pinned.sort_by_key(|entry| entry.load_order);
-        let mut pinned = pinned.into_iter().peekable();
-        let mut unpinned = unpinned.into_iter();
-        let mut result = Vec::with_capacity(self.mods.len());
-        while result.len() < self.mods.len() {
-            while pinned
-                .peek()
-                .is_some_and(|entry| entry.load_order.unwrap_or(0) <= result.len())
-            {
-                if let Some(entry) = pinned.next() {
-                    result.push(entry);
-                }
+        let pinned = self.mods.iter().any(|entry| entry.load_order.is_some());
+        match self.version {
+            // This manager writes the launch order as the list order.
+            Some(version) if version >= LIST_ORDER_VERSION => self.mods.iter().collect(),
+            // Earlier builds of this manager wrote version 2 without pins.
+            Some(_) if !pinned => self.mods.iter().collect(),
+            // The original's version 2: its launch order is `sortByNameAndLoadOrder` over the
+            // enabled mods (modSortingHelpers.ts), not the list order; pins are indices among
+            // enabled mods. Disabled entries follow in list order.
+            Some(_) => {
+                let (enabled, disabled): (Vec<_>, Vec<_>) =
+                    self.mods.iter().partition(|entry| entry.is_enabled);
+                let mut sorted = enabled;
+                sorted.sort_by(|a, b| compare_mod_names(&a.name, &b.name));
+                let mut result = splice_pins(sorted);
+                result.extend(disabled);
+                result
             }
-            if let Some(entry) = unpinned.next().or_else(|| pinned.next()) {
+            // Before version 2, the original sorted names and inserted pinned positions.
+            None => {
+                let mut sorted: Vec<_> = self.mods.iter().collect();
+                sorted.sort_by_cached_key(|entry| entry.name.to_lowercase());
+                splice_pins(sorted)
+            }
+        }
+    }
+}
+
+/// Insert pinned entries at their `load_order` index into the name-sorted rest,
+/// exactly like the original's `sortByNameAndLoadOrder`.
+fn splice_pins(sorted: Vec<&Entry>) -> Vec<&Entry> {
+    let total = sorted.len();
+    let (mut pinned, unpinned): (Vec<_>, Vec<_>) = sorted
+        .into_iter()
+        .partition(|entry| entry.load_order.is_some());
+    pinned.sort_by_key(|entry| entry.load_order);
+    let mut pinned = pinned.into_iter().peekable();
+    let mut unpinned = unpinned.into_iter();
+    let mut result = Vec::with_capacity(total);
+    while result.len() < total {
+        while pinned
+            .peek()
+            .is_some_and(|entry| entry.load_order.unwrap_or(0) <= result.len())
+        {
+            if let Some(entry) = pinned.next() {
                 result.push(entry);
             }
         }
-        result
+        if let Some(entry) = unpinned.next().or_else(|| pinned.next()) {
+            result.push(entry);
+        }
+    }
+    result
+}
+
+/// The original's `compareModNames`: UTF-16 code units, case-sensitive, and a
+/// name that is a prefix of another sorts *after* it.
+pub fn compare_mod_names(first: &str, second: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let (mut a, mut b) = (first.encode_utf16(), second.encode_utf16());
+    loop {
+        match (a.next(), b.next()) {
+            (None, None) => return Ordering::Equal,
+            (None, Some(_)) => return Ordering::Greater,
+            (Some(_), None) => return Ordering::Less,
+            (Some(x), Some(y)) if x != y => return x.cmp(&y),
+            _ => {}
+        }
     }
 }

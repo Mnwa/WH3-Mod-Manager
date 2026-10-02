@@ -44,16 +44,7 @@ impl Manager {
                         Ok(presets) => {
                             let count = presets.len();
                             for preset in presets {
-                                if let Some(existing) = this
-                                    .settings
-                                    .presets
-                                    .iter_mut()
-                                    .find(|p| p.name == preset.name)
-                                {
-                                    *existing = preset;
-                                } else {
-                                    this.settings.presets.push(preset);
-                                }
+                                this.store_preset(preset);
                             }
                             this.status = wh3_core::message!(
                                 "Imported {count} presets. Select a preset to apply it.",
@@ -101,14 +92,104 @@ impl Manager {
             cx.notify();
             return;
         }
-        let preset = self.capture(name.clone());
-        if let Some(existing) = self.settings.presets.iter_mut().find(|p| p.name == name) {
+        let preset = self.capture(name);
+        self.store_preset(preset);
+        self.dirty = true;
+        self.save(cx);
+        cx.notify();
+    }
+}
+
+/// How a stored preset combines with the current list (the original's click,
+/// Shift+click and Ctrl+click on a preset).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum PresetAction {
+    Apply,
+    Merge,
+    Subtract,
+    Replace,
+    Delete,
+}
+
+/// Snapshot taken on every launch, as the original's "On Last Game Launch".
+pub(super) const LAST_LAUNCH: &str = "On Last Game Launch";
+
+impl Manager {
+    pub(super) fn preset_action(
+        &mut self,
+        index: usize,
+        action: PresetAction,
+        cx: &mut Context<Self>,
+    ) {
+        if self.busy {
+            return;
+        }
+        let Some(preset) = self.settings.presets.get(index).cloned() else {
+            return;
+        };
+        match action {
+            PresetAction::Apply => {
+                self.apply_preset(&preset, cx);
+                return;
+            }
+            PresetAction::Merge | PresetAction::Subtract => {
+                let enable = action == PresetAction::Merge;
+                let always = self.always_enabled_indices();
+                for entry in preset.mods.iter().filter(|entry| entry.is_enabled) {
+                    let Some(&index) = self
+                        .catalog
+                        .by_name
+                        .get(&entry.name.to_lowercase())
+                        .and_then(|indices| indices.first())
+                    else {
+                        continue;
+                    };
+                    if enable {
+                        self.enabled.insert(index);
+                    } else if !always.contains(&index) {
+                        self.enabled.remove(&index);
+                    }
+                }
+                self.status = if enable {
+                    wh3_core::message!(
+                        "Enabled mods from “{}”",
+                        "Включены моды из «{}»",
+                        preset.name
+                    )
+                } else {
+                    wh3_core::message!(
+                        "Disabled mods from “{}”",
+                        "Отключены моды из «{}»",
+                        preset.name
+                    )
+                };
+                self.refresh_if_enabled_matters(cx);
+            }
+            PresetAction::Replace => {
+                self.settings.presets[index] = self.capture(preset.name.clone());
+                self.status =
+                    wh3_core::message!("Preset “{}” updated", "Пресет «{}» обновлён", preset.name);
+            }
+            PresetAction::Delete => {
+                self.settings.presets.remove(index);
+                self.status =
+                    wh3_core::message!("Preset “{}” deleted", "Пресет «{}» удалён", preset.name);
+            }
+        }
+        self.dirty = true;
+        cx.notify();
+    }
+
+    pub(super) fn store_preset(&mut self, preset: Preset) {
+        if let Some(existing) = self
+            .settings
+            .presets
+            .iter_mut()
+            .find(|p| p.name == preset.name)
+        {
             *existing = preset;
         } else {
             self.settings.presets.push(preset);
         }
-        self.dirty = true;
-        self.save(cx);
-        cx.notify();
     }
 }

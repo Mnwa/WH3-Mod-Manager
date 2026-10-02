@@ -4,15 +4,46 @@ use std::sync::Arc;
 use wh3_core::{preset::Preset, storage};
 
 impl Manager {
+    /// Pinned (hand-placed) mods keep their position as `loadOrder`, the field
+    /// the original uses for pins, so presets and the library remember them.
     pub(super) fn capture(&self, name: String) -> Preset {
-        Preset::capture(name, &self.catalog, &self.order, &self.enabled)
+        let mut preset = Preset::capture(name, &self.catalog, &self.order, &self.enabled);
+        let pinned: std::collections::HashSet<&str> = self
+            .rules
+            .pinned
+            .iter()
+            .map(|&i| &*self.catalog.mods[i].name)
+            .collect();
+        for (position, entry) in preset.mods.iter_mut().enumerate() {
+            if pinned.contains(entry.name.as_str()) {
+                entry.load_order = Some(position);
+            }
+        }
+        preset
     }
 
     pub(super) fn apply_preset(&mut self, preset: &Preset, cx: &mut Context<Self>) {
         let applied = preset.apply(&self.catalog);
         self.order = Arc::new(applied.order);
+        // Rows index the catalog directly; until the debounced query finishes,
+        // show the new order so no stale index from a previous catalog survives.
+        self.visible = self.order.to_vec();
         self.rebuild_ranks();
         self.enabled = applied.enabled;
+        self.enforce_always_enabled();
+        self.rules.pinned = preset
+            .mods
+            .iter()
+            .filter(|entry| entry.load_order.is_some())
+            .filter_map(|entry| {
+                self.catalog
+                    .by_name
+                    .get(&entry.name.to_lowercase())?
+                    .first()
+                    .copied()
+            })
+            .collect();
+        self.apply_rules(cx);
         self.status = wh3_core::message!(
             "Preset “{}” · {} missing mods",
             "Пресет «{}» · отсутствует модов: {}",

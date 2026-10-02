@@ -1,42 +1,99 @@
+//! Mod-management screen: library state, background jobs and the views that render it.
 mod actions;
+mod categories;
+mod compat;
+mod dialogs;
+mod flags;
+mod header;
 mod jobs;
 mod language;
+mod launch;
+mod list;
 mod metadata;
+mod multi;
+mod order;
 mod persistence;
+mod presets;
+mod query;
+mod report;
+mod row;
+mod row_menu;
+mod rules;
+mod rules_view;
+mod selection;
+mod sidebar;
+mod steam;
+mod toolbar;
 mod view;
+mod workshop_menu;
 
+use crate::update::Updater;
 use gpui_kit::{component::input::InputState, *};
 use std::{
     collections::HashSet,
     sync::{Arc, atomic::AtomicBool},
 };
-use wh3_core::{catalog::Catalog, storage::Settings};
+use wh3_core::{catalog::Catalog, localization::Message, storage::Settings};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Filter {
     All,
     Enabled,
     Disabled,
+    Hidden,
+}
+
+/// Table sorting is a view concern and never changes the game load order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SortKey {
+    Order,
+    Enabled,
+    Title,
+    Pack,
+    Author,
+    Updated,
+    Size,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Sort {
+    pub key: SortKey,
+    pub descending: bool,
+}
+
+impl Sort {
+    /// Dragging rows reorders the load order, so it is only meaningful in that view.
+    pub fn is_load_order(self) -> bool {
+        self.key == SortKey::Order && !self.descending
+    }
 }
 
 pub struct Manager {
     pub(super) catalog: Arc<Catalog>,
     pub(super) order: Arc<Vec<usize>>,
     pub(super) ranks: Vec<usize>,
-    pub(super) sort_name: bool,
+    pub(super) sort: Sort,
     pub(super) enabled: HashSet<usize>,
     pub(super) visible: Vec<usize>,
     pub(super) selected: Option<usize>,
+    /// Multi-selection (catalog indices); `selected` is its focused row.
+    pub(super) marked: std::collections::BTreeSet<usize>,
+    pub(super) anchor: Option<usize>,
     pub(super) search: Entity<InputState>,
     pub(super) preset_name: Entity<InputState>,
     pub(super) filter: Filter,
+    pub(super) category: Option<Arc<str>>,
+    /// Category names with mod counts, rebuilt when metadata changes, not per frame.
+    pub(super) categories: Vec<(Arc<str>, usize)>,
     pub(super) settings: Settings,
-    pub(super) status: wh3_core::localization::Message,
+    pub(super) status: Message,
     pub(super) language: wh3_core::localization::Language,
     pub(super) preferences_task: Option<Task<()>>,
     pub(super) preferences_busy: bool,
-    pub(super) diagnostics: Vec<wh3_core::localization::Message>,
-    pub(super) details: Vec<wh3_core::localization::Message>,
+    pub(super) diagnostics: Vec<Message>,
+    pub(super) details: Vec<Message>,
+    pub(super) compat: compat::State,
+    pub(super) report_tab: compat::Tab,
     pub(super) show_report: bool,
     pub(super) busy: bool,
     pub(super) cancellable: bool,
@@ -44,12 +101,19 @@ pub struct Manager {
     pub(super) dirty: bool,
     pub(super) focus: FocusHandle,
     pub(super) scroll: UniformListScrollHandle,
+    pub(super) report_scroll: UniformListScrollHandle,
+    pub(super) preset_scroll: UniformListScrollHandle,
     pub(super) cancel: Arc<AtomicBool>,
     pub(super) generation: u64,
     pub(super) query_generation: u64,
     pub(super) job: Option<Task<()>>,
     pub(super) search_task: Option<Task<()>>,
     pub(super) io_task: Option<Task<()>>,
+    pub(super) launch: launch::State,
+    pub(super) steam: steam::State,
+    pub(super) rules: rules::State,
+    pub(super) updater: Entity<Updater>,
+    pub(super) window_title: String,
     pub(super) _subscriptions: Vec<Subscription>,
     pub rendered_rows: usize,
 }
@@ -60,9 +124,3 @@ impl Drop for Manager {
             .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 }
-
-mod list;
-mod selection;
-mod shell;
-
-mod presets;

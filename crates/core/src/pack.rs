@@ -1,9 +1,17 @@
+//! PFH4/PFH5 pack headers, indexes and packed file payloads.
+mod compression;
+mod read;
+
 use crate::{Error, Result, error::io};
 use std::{
     fs::File,
     io::{Read, Seek, SeekFrom},
     path::Path,
 };
+
+pub use crate::pack_writer::{encode, write};
+pub use compression::{MAX_ENTRY_SIZE, decompress};
+pub use read::{Reader, read_file, read_files};
 
 const MAX_INDEX: u64 = 128 * 1024 * 1024;
 
@@ -18,7 +26,7 @@ pub struct Header {
     pub pack_size: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PackedFile {
     pub name: String,
     pub size: u32,
@@ -35,6 +43,11 @@ fn word(bytes: &[u8], offset: usize) -> Result<u32> {
 
 pub fn header(path: &Path) -> Result<Header> {
     let mut file = File::open(path).map_err(|e| io(path, e))?;
+    read_header(&mut file, path)
+}
+
+/// Reads the header from the start of an open pack; `path` is only used for error messages.
+fn read_header(file: &mut File, path: &Path) -> Result<Header> {
     let pack_size = file.metadata().map_err(|e| io(path, e))?.len();
     let mut bytes = [0; 28];
     file.read_exact(&mut bytes).map_err(|e| io(path, e))?;
@@ -93,8 +106,13 @@ pub fn header(path: &Path) -> Result<Header> {
 }
 
 pub fn index(path: &Path) -> Result<Vec<PackedFile>> {
-    let header = header(path)?;
     let mut file = File::open(path).map_err(|e| io(path, e))?;
+    read_index(&mut file, path)
+}
+
+/// Reads the header and index of an open pack, leaving the cursor after the index.
+fn read_index(file: &mut File, path: &Path) -> Result<Vec<PackedFile>> {
+    let header = read_header(file, path)?;
     file.seek(SeekFrom::Start(header.index_start))
         .map_err(|e| io(path, e))?;
     let mut bytes = vec![0; header.index_size as usize];

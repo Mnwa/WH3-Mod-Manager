@@ -45,6 +45,20 @@ impl Message {
     pub fn text(&self, language: Language) -> &str {
         language.text(&self.english, &self.russian)
     }
+    /// Append another message per language, e.g. a localized status after a fragment.
+    pub fn concat(self, other: Message) -> Self {
+        Self::new(
+            format!("{}{}", self.english, other.english),
+            format!("{}{}", self.russian, other.russian),
+        )
+    }
+    /// Prefix untranslated user content such as a mod name.
+    pub fn prefixed(self, prefix: &str) -> Self {
+        Self::new(
+            format!("{prefix}{}", self.english),
+            format!("{prefix}{}", self.russian),
+        )
+    }
 }
 impl From<String> for Message {
     fn from(value: String) -> Self {

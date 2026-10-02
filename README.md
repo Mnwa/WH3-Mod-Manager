@@ -1,129 +1,109 @@
-# WH3 Mod Manager · Rust
+# WH3 Mod Manager
 
-A native Total War: Warhammer III (Steam) mod manager built with Rust and GPUI Kit.
-This is the first stage of the [Shazbot/WH3-Mod-Manager](https://github.com/Shazbot/WH3-Mod-Manager)
-port. Implemented features and remaining differences are tracked in [MIGRATION.md](docs/MIGRATION.md).
+A fast mod manager for **Total War: Warhammer III** on Steam. It is a native Windows
+rewrite of [Shazbot's WH3 Mod Manager](https://github.com/Shazbot/WH3-Mod-Manager):
+the same everyday features, without Electron, and it can import everything you set up
+in the original. The interface is available in English and Russian.
 
-## Running
+Features not present in the CA launcher:
 
-Use the latest **stable Rust**. The compiler version is not pinned.
-Windows builds require Visual Studio Build Tools with C++ and the Windows SDK, plus CMake.
-macOS builds require Command Line Tools.
+- instant even with hundreds or thousands of mods, with thumbnails, authors and update dates
+- drag-and-drop load order, "load before/after" rules and pinned positions
+- presets, categories, hidden and always-enabled mods, search (including `/regex/`)
+- options to skip intro movies, enable script logging, auto-start a custom battle
+  and let units be picked as generals
+- a compatibility checker that shows which mod wins overwritten files and DB rows,
+  missing requirements and start-position conflicts
+- update, subscribe and unsubscribe Workshop mods, install missing requirements and
+  import Steam collections directly from the manager
+- **Continue** your latest campaign, load any save, or enable exactly the mods a save used
+- imports presets, load order, categories, rules and options from the original manager
+- updates itself from GitHub Releases
 
-```sh
-cargo run -p wh3-mod-manager --release --locked
-# Explore a large library without installing the game:
-cargo run -p wh3-mod-manager --release --locked -- --demo=100000
-```
+![The mod list with thumbnails, badges and the compatibility report](docs/screenshot.png)
 
-Choose the folder containing `Warhammer3.exe`. The manager scans `data` and the
-adjacent Steam Workshop folder `1142710`; additional mod folders can be added manually.
-Use checkboxes to enable mods and select a row to change its load order. The **Enable**
-and **Disable** buttons affect all current search results. Search covers titles, pack
-names, Workshop IDs, imported authors, tags and categories. Sorting the table does not
-change the launch order.
+## Download and install
 
-The interface supports **English and Russian**. Use the language button in the top
-bar to switch immediately; the choice is saved automatically. English is the initial
-default. Demo mode does not change saved preferences. Labels, tooltips, reports,
-application errors and input edit menus follow the selected language. Native file
-picker controls and operating-system error details follow the system language;
-mod titles, preset names and imported user content retain their original text.
+1. Open the [latest release](https://github.com/Mnwa/WH3-Mod-Manager/releases/latest).
+2. Under **Assets**, download `WH3-Mod-Manager-…-windows-x64.zip`.
+3. Unpack the whole archive into any folder, for example `Documents\WH3 Mod Manager`.
+   Keep `steam_api64.dll` next to `wh3-mod-manager.exe`: Workshop features need it.
+4. Run `wh3-mod-manager.exe`.
 
-`Ctrl/Cmd+F` focuses search; `Ctrl/Cmd+S` saves; `Alt+Up/Down` moves the selected mod;
-`Esc` closes the report. Unsaved library changes are saved when closing the window.
-If saving fails, the window stays open and offers a choice to resolve the error or
-close without saving.
+Windows may show "Windows protected your PC" because the program is not signed.
+Click **More info → Run anyway**. You only need 64-bit Windows 10 or 11 and Steam
+with Total War: Warhammer III; nothing else has to be installed.
 
-**Play** is available on Windows. It writes a separate `wh3_rust_mods.txt`, preserving
-the original manager's `used_mods.txt`. Launching a real game still requires manual
-Windows verification; automated tests cover script contents and launch arguments.
+New versions are found automatically: when a green **Update** button appears in the
+top bar, click it, then **Restart**. Your mod list is saved first.
 
-## Migrating original metadata
+## First start
 
-Save settings in the original manager first. Its `config.json` is in the Electron
-user-data directory, or beside the executable for a portable installation.
+- The manager finds the game in your Steam libraries. If it does not, click
+  **Game folder** and choose the folder that contains `Warhammer3.exe`.
+- **Coming from the original manager?** Open **Options → Import metadata or
+  config.json…** and choose its `config.json`, usually
+  `%APPDATA%\wh3mm\config.json`. Your enabled mods, load order, presets, categories,
+  rules, hidden and always-enabled mods and start options are imported; the original
+  file is not changed. Then click **Save**.
+- Switch the language with the **Русский / English** button in the top bar.
 
-In the Rust manager:
+## Everyday use
 
-1. Choose **Original metadata…**, select the original `config.json`, and save `wh3-metadata.json`.
-2. Choose **Import metadata** and select the exported file, or import `config.json` directly.
-3. Review missing mods, load order and enabled states, then save the library.
+- **Enable mods** with the checkboxes. Clicking a column header sorts the table; this
+  never changes the order the game loads mods in.
+- **Load order**: drag a row by its number, or use Top/Up/Down/Bottom
+  (`Alt+↑/↓`, `Alt+Home/End`). Mods higher in the list win conflicts. A mod you moved
+  by hand stays where you put it. Right-click a mod and choose **Load before…** or
+  **Load after…** to add a rule that keeps two mods in the right order; the
+  **Rules** button lists your rules and the ones mods ship with.
+- **Select several mods** with `Ctrl+click`, `Shift+click` or `Ctrl+A`, then press
+  `Space` or right-click to enable, disable, move or hide them together.
+- **Right-click a mod** for its Workshop page, Steam, the folder on disk, categories,
+  **Keep always enabled**, **Hide from list**, **Update from Workshop** and
+  **Unsubscribe**.
+- **Presets**: type a name and click **Save preset**. Click a preset to apply it; its
+  **…** menu can add or remove its mods, replace it with the current list or delete
+  it. "On Last Game Launch" is refreshed on every launch.
+- **Check compatibility** lists overwritten files, colliding DB rows (with the mod
+  that wins), missing dependencies and conflicting start positions, and marks the
+  affected rows. **Get required mods** subscribes to what is missing and enables it
+  once Steam has downloaded it.
+- **Workshop** in the top bar refreshes mod data, updates outdated mods, re-downloads
+  enabled ones and imports a Steam collection link. Steam must be running.
+- **Options** holds the game start parameters (keep them identical with friends for
+  multiplayer) and **Close manager on Play**.
+- **Play** starts the game with your mods; **Continue** loads your newest campaign
+  save, and the folder button next to it lists recent saves.
 
-The exporter also works without the GUI, Steam or Node.js:
+Row badges: lock — always enabled; film — movie pack; clock — older than the last game
+update and overwrites game files; download arrow — an update is on the Workshop;
+triangle — conflicts; circle — missing requirements. Hover a badge for details.
 
-```sh
-cargo run -p wh3-core --bin wh3-meta --locked -- export config.json wh3-metadata.json
-cargo run -p wh3-core --bin wh3-meta --locked -- --lang=ru export config.json wh3-metadata.json
-```
+Keyboard: `Ctrl+F` search, `Ctrl+S` save, `Space` enable/disable, `Esc` close the report.
 
-The CLI is built from source only; release assets ship just the GUI.
+## Where your data is stored
 
-The source configuration is never modified. Export includes saved titles, authors,
-categories, tags, Workshop IDs, dependencies and presets when present in the source.
-Missing data is neither invented nor downloaded.
+The mod list, presets and settings are kept in `%APPDATA%\wh3-mod-manager-rust`.
+Every save keeps the previous version as `library.whmm.bak`. To keep everything in
+another folder (for example a portable copy), set the `WH3MM_HOME` environment
+variable to that folder.
 
-Internal persistence uses the **rkyv** binary `library.whmm` format. JSON is reserved
-for interchange. See [STORAGE.md](docs/STORAGE.md) for the format, backup and recovery.
+The manager writes its own mod list, `wh3_rust_mods.txt`, into the game folder, so it
+never overwrites the original manager's `used_mods.txt`. Files generated for the start
+options live in the data folder above, never in the game's `data` folder.
 
-## Quality checks and Windows EXE
+## Status and differences from the original
 
-```sh
-cargo fmt --all --check
-cargo clippy --workspace --all-targets --locked -- -D warnings
-cargo test --workspace --locked
-cargo bench -p wh3-core --bench catalog --locked
-```
+The mod-management part of the original is ported. The pack/DB editors, game data
+viewers and node flows are not. [MIGRATION.md](docs/MIGRATION.md) lists what is
+ported and what still differs.
 
-On macOS, the `visual` test uses the real Metal renderer, writes screenshots into
-`target/visual`, checks both interface languages and validates virtualization with
-1,000 / 10,000 / 100,000 mods. This specific test is explicitly skipped elsewhere.
+Found a problem? [Open an issue](https://github.com/Mnwa/WH3-Mod-Manager/issues).
+Developers: see [DEVELOPMENT.md](DEVELOPMENT.md).
 
-There are two GitHub Actions workflows:
+## License
 
-- `ci.yml` runs on pushes to `main` and pull requests targeting `main`. It checks
-  formatting, Clippy, tests, release-version handling and performance/visual results
-  on Linux, Windows and macOS. After successful pushes, Sampo prepares a draft release
-  PR with synchronized versions and package changelogs. CI does not package application releases.
-- `release.yml` runs when a GitHub Release is published. It reads that existing
-  release, checks out its exact tag and builds the Windows x64 executables with the
-  latest stable Rust. Package versions come from the SemVer tag (for example
-  `v0.1.0`); dependency versions remain locked.
-
-## Release preparation
-
-Add user-visible changes as English [Sampo changesets](.sampo/README.md). CI validates
-the release plan; successful pushes to `main` create or refresh a draft release PR
-with versions and changelogs. Mark it Ready for review to run CI, then merge it before
-publishing the matching GitHub Release. See the [desktop changelog](crates/desktop/CHANGELOG.md)
-and [core changelog](crates/core/CHANGELOG.md).
-
-## Publishing a release
-
-Publish a GitHub Release whose tag points to a commit containing `release.yml` and
-its scripts. The workflow builds and retains an Actions artifact, then attaches these
-files to the same release:
-
-- `wh3-mod-manager.exe` (Windows x64, unsigned).
-- `WH3-Mod-Manager-<tag>-windows-x64.zip` with documentation and the license.
-- `SHA256SUMS.txt` covering the executable and the ZIP.
-
-Reruns replace matching assets while preserving the release's title, notes and
-prerelease status. The workflow requires an existing published release and never
-creates one. Upload uses the built-in `GITHUB_TOKEN`; no additional secret is needed.
-
-To rebuild an existing published release manually:
-
-```sh
-gh workflow run release.yml -f tag=v0.1.0
-```
-
-Manual dispatch is available once the workflow is on the default branch. Tag pushes
-alone do not trigger `release.yml`; publishing the GitHub Release does.
-
-## Repository layout
-
-- `crates/core`: catalog, Steam paths, pack indexes, presets, metadata, binary persistence and launch logic.
-- `crates/desktop`: GPUI components, background jobs and virtualized lists.
-- `docs/PERFORMANCE.md`: measured results and validation boundaries.
-- `AGENTS.md`: development rules adapted from `cr-chat-desktop`.
+MIT. Based on the original WH3 Mod Manager by Shazbot. The bundled DB schema derives
+from [RPFM's schemas](https://github.com/Frodo45127/rpfm-schemas) (MIT); see
+[crates/core/assets/NOTICE](crates/core/assets/NOTICE).

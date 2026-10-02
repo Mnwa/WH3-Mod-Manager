@@ -36,11 +36,27 @@ impl Manager {
                         match result {
                             Ok((bundle, catalog, matched)) => {
                                 this.catalog = Arc::new(catalog);
+                                this.rebuild_workshop_ids();
+                                for rule in bundle.user_rules() {
+                                    if !this.settings.rules.contains(&rule) {
+                                        this.settings.rules.push(rule);
+                                    }
+                                }
+                                this.settings.disabled_rules.extend(bundle.disabled_load_order_rules.iter().cloned());
+                                this.settings.disabled_rule_packs.extend(
+                                    bundle.load_order_rule_disabled_packs.iter().map(|name| wh3_core::load_order::pack_key(name)),
+                                );
+                                this.settings.always_enabled.extend(bundle.always_enabled.iter().map(|n| n.to_lowercase()));
+                                this.settings.hidden.extend(bundle.hidden.iter().map(|n| n.to_lowercase()));
+                                if let Some(options) = bundle.options {
+                                    this.settings.options = options;
+                                }
                                 this.settings.metadata.extend(bundle.mods);
                                 for preset in bundle.presets {
-                                    if let Some(existing) = this.settings.presets.iter_mut().find(|p| p.name == preset.name) { *existing = preset; }
-                                    else { this.settings.presets.push(preset); }
+                                    this.store_preset(preset);
                                 }
+                                this.rebuild_categories();
+                                this.apply_rules(cx);
                                 if let Some(preset) = bundle.current_preset { this.apply_preset(&preset, cx); }
                                 this.diagnostics.extend(bundle.warnings.into_iter().map(metadata::warning_message));
                                 this.status = wh3_core::message!("Metadata imported · {matched} matching mods. Save the library.", "Мета импортирована · совпало модов: {matched}. Сохраните библиотеку.", matched = matched);

@@ -30,6 +30,21 @@ pub fn warning() -> Hsla {
     rgb(0xe8b66a).into()
 }
 
+pub fn danger() -> Hsla {
+    rgb(0xef6461).into()
+}
+/// Data packs are highlighted like the original's orange pack names.
+pub fn data_pack() -> Hsla {
+    rgb(0xe39a5b).into()
+}
+/// Always-enabled mods use the original's violet accent.
+pub fn always_enabled() -> Hsla {
+    rgb(0xb18cff).into()
+}
+pub fn thumbnail() -> Hsla {
+    rgb(0x262a31).into()
+}
+
 pub fn install(cx: &mut App) {
     // Apply shared tokens to the kit components as well.
     let theme = Theme::global_mut(cx);

@@ -26,9 +26,23 @@ pub struct Bundle {
     pub mods: BTreeMap<String, Metadata>,
     pub presets: Vec<Preset>,
     pub current_preset: Option<Preset>,
-    /// Preserve unsupported rules in exports without claiming to apply them.
+    /// The original's `loadOrderRules`; user rules are imported by [`Bundle::user_rules`].
     #[serde(default)]
     pub load_order_rules: Value,
+    /// Raw keys of switched-off pack rules (`disabledModLoadOrderRules`).
+    #[serde(default)]
+    pub disabled_load_order_rules: Vec<String>,
+    /// Packs whose rules are switched off (`loadOrderRuleDisabledPacks`).
+    #[serde(default)]
+    pub load_order_rule_disabled_packs: Vec<String>,
+    /// Global `alwaysEnabledModNames` and `hiddenModNames` of the original.
+    #[serde(default)]
+    pub always_enabled: Vec<String>,
+    #[serde(default)]
+    pub hidden: Vec<String>,
+    /// The original's game start switches, when present in the source.
+    #[serde(default)]
+    pub options: Option<crate::storage::GameOptions>,
     #[serde(default)]
     pub warnings: Vec<String>,
 }
@@ -96,13 +110,44 @@ impl Bundle {
             .map(|v| serde_json::from_value(v.clone()))
             .transpose()?;
         let load_order_rules = game.get("loadOrderRules").cloned().unwrap_or(Value::Null);
-        let mut warnings = vec!["Export contains only metadata saved by the original manager. Missing Workshop fields are not downloaded.".into()];
-        if load_order_rules
-            .as_array()
-            .is_some_and(|rules| !rules.is_empty())
-        {
-            warnings.push("Automatic load-order rules are preserved in the file but are not yet applied by the Rust manager.".into());
-        }
+        let strings = |key: &str| -> Vec<String> {
+            game.get(key)
+                .and_then(Value::as_array)
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let top = |key: &str| -> Vec<String> {
+            value
+                .get(key)
+                .and_then(Value::as_array)
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let flag = |key: &str| value.get(key).and_then(Value::as_bool);
+        let options =
+            flag("isSkipIntroMoviesEnabled").map(|skip_intro_movies| crate::storage::GameOptions {
+                skip_intro_movies,
+                script_logging: flag("isScriptLoggingEnabled").unwrap_or_default(),
+                auto_start_custom_battle: flag("isAutoStartCustomBattleEnabled")
+                    .unwrap_or_default(),
+                close_on_play: flag("isClosedOnPlay").unwrap_or_default(),
+                make_units_generals: flag("isMakeUnitsGeneralsEnabled").unwrap_or_default(),
+            });
+        let disabled_load_order_rules = strings("disabledModLoadOrderRules");
+        let load_order_rule_disabled_packs = strings("loadOrderRuleDisabledPacks");
+        let warnings = vec!["Export contains only metadata saved by the original manager. Missing Workshop fields are not downloaded.".into()];
         Ok(Self {
             format: FORMAT.into(),
             version: 1,
@@ -111,6 +156,11 @@ impl Bundle {
             presets,
             current_preset,
             load_order_rules,
+            disabled_load_order_rules,
+            load_order_rule_disabled_packs,
+            always_enabled: top("alwaysEnabledModNames"),
+            hidden: top("hiddenModNames"),
+            options,
             warnings,
         })
     }
@@ -146,6 +196,30 @@ fn merge(target: &mut Metadata, source: Metadata, original: &Value) {
     }
     if !source.req_mod_id_to_name.is_empty() {
         target.req_mod_id_to_name = source.req_mod_id_to_name;
+    }
+}
+
+impl Bundle {
+    /// The original's user rules (`{before, after, subjectPackName}` without a
+    /// `sourcePackName`); pack rules are re-read from the packs themselves.
+    pub fn user_rules(&self) -> Vec<crate::load_order::Rule> {
+        let Some(rules) = self.load_order_rules.as_array() else {
+            return vec![];
+        };
+        rules
+            .iter()
+            .filter(|rule| {
+                rule.get("sourcePackName")
+                    .and_then(Value::as_str)
+                    .is_none_or(str::is_empty)
+            })
+            .filter_map(|rule| {
+                let field = |key| rule.get(key).and_then(Value::as_str);
+                let (before, after) = (field("before")?, field("after")?);
+                let subject = field("subjectPackName").unwrap_or(after);
+                Some(crate::load_order::Rule::user(before, after, subject))
+            })
+            .collect()
     }
 }
 
