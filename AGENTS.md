@@ -128,3 +128,29 @@ quality checks in `ci.yml` (pushes/PRs targeting `main`) and Windows release pac
 in `release.yml` (an existing published GitHub Release).
 Confirm that the executable artifact belongs to the final branch commit. Distinguish
 successful Windows compilation from an actual game-launch/runtime verification.
+
+## Windows GUI from WSL 2
+
+From WSL 2, build and run the native Windows GUI with the Windows-side toolchain
+through interop. Do not cross-compile from Linux. Windows needs rustup (MSVC host),
+Visual Studio Build Tools and the Windows SDK. GPUI's build script uses `fxc.exe`
+from that SDK.
+
+```sh
+WIN_HOME=$(wslpath "$(cmd.exe /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')")
+export CARGO_TARGET_DIR="$WIN_HOME/AppData/Local/wh3-target"
+export WSLENV=CARGO_TARGET_DIR/p   # /p translates the path for Windows processes
+"$WIN_HOME/.cargo/bin/cargo.exe" build -p wh3-mod-manager --locked
+"$CARGO_TARGET_DIR/debug/wh3-mod-manager.exe" --demo=500 &
+```
+
+- Keep the target directory on the Windows disk. Building into `\\wsl.localhost` is
+  slow and can fail. Sources may stay in WSL.
+- Use `--demo=N` unless the task needs real data. Without it, the app reads the real
+  game folder and settings, and Save/Play act on them.
+- Check the window with `powershell.exe -NoProfile -Command "Get-Process wh3-mod-manager
+  | Select-Object Id,MainWindowTitle,Responding"`. Stop it with `Stop-Process`.
+- `rust-toolchain.toml` makes the Windows rustup sync `stable`, so the Windows compiler
+  may be newer than the one in WSL.
+- A WSLg launch of the Linux build is not a Windows runtime check. A demo-mode window
+  is not a game-launch check.
