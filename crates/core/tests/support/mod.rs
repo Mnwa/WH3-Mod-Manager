@@ -63,8 +63,10 @@ fn sized(bytes: &[u8], stream: Vec<u8>) -> Vec<u8> {
 }
 
 pub fn zstd(bytes: &[u8]) -> Vec<u8> {
-    let frame =
-        ruzstd::encoding::compress_to_vec(bytes, ruzstd::encoding::CompressionLevel::Fastest);
+    let frame = mzstd::Compressor::new(mzstd::EncoderConfig::default())
+        .unwrap()
+        .compress(bytes)
+        .unwrap();
     sized(bytes, frame)
 }
 

@@ -97,6 +97,8 @@ fn hostile_compressed_entries_are_rejected() {
     // Too short to hold the size, and a size above the limit.
     rejects(vec![1, 0]);
     rejects([u32::MAX.to_le_bytes().to_vec(), zstd(&data)[4..].to_vec()].concat());
+    // An entry holds one zstd frame; anything after it means the entry is damaged.
+    rejects([zstd(&data), b"tail".to_vec()].concat());
     // The declared size disagrees with the stream. Raw LZMA has no length of its own, so like
     // the game it decodes exactly the declared size and only a longer claim is detectable.
     for (stream, framed) in [

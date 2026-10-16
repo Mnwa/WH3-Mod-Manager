@@ -8,7 +8,7 @@
 //! plus the memory of the parsed definitions.
 use crate::{Error, Result, localization::Message};
 use serde::Deserialize;
-use std::{collections::HashMap, io::Read, sync::OnceLock};
+use std::{collections::HashMap, sync::OnceLock};
 
 const SCHEMA: &[u8] = include_bytes!("../../assets/schema_wh3.json.zst");
 /// Upper bound for the decompressed schema; the current file is about 9 MB.
@@ -178,11 +178,9 @@ fn load() -> std::result::Result<Schema, Message> {
     let failed = |detail: &dyn std::fmt::Display| {
         crate::message!("embedded DB schema: {}", "встроенная схема DB: {}", detail)
     };
-    let decoder = ruzstd::decoding::StreamingDecoder::new(SCHEMA).map_err(|e| failed(&e))?;
-    let mut json = Vec::new();
-    decoder
-        .take(MAX_SCHEMA_SIZE)
-        .read_to_end(&mut json)
+    let limits = mzstd::DecodeLimits::DEFAULT.with_max_output_bytes(Some(MAX_SCHEMA_SIZE));
+    let json = mzstd::Decompressor::new(mzstd::DecoderConfig::DEFAULT.with_limits(limits))
+        .decompress(SCHEMA)
         .map_err(|e| failed(&e))?;
     Schema::from_json(&json).map_err(|e| failed(&e))
 }

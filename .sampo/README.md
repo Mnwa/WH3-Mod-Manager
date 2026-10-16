@@ -17,9 +17,16 @@ cargo/wh3-mod-manager: patch (Fixed)
 Keep the selected mod visible after changing its load order.
 ```
 
-Use `cargo/wh3-core` for core behavior. Include both package keys when the description
-applies to both. Bumps are `patch`, `minor` or `major`; section names are `Added`,
-`Changed`, `Fixed`, `Removed` and `Security`. Describe the user-visible outcome.
+The two changelogs have different readers. `cargo/wh3-mod-manager` entries become the
+GitHub Release notes: describe the outcome a player notices, without crate, type or
+format names. `cargo/wh3-core` entries record implementation details for developers:
+formats, dependencies, limits and measured performance. When a change needs both, write
+two changesets rather than one file listing both keys, which copies the same text into
+both changelogs. The fixed group bumps both packages either way.
+
+Bumps are `patch`, `minor` or `major`; section names are `Added`, `Changed`, `Fixed`,
+`Removed` and `Security`. Write each paragraph on one line: Sampo keeps line breaks,
+and wrapped lines turn into indented continuations in the changelog and release notes.
 Documentation-only changes do not require a changeset.
 
 For the CLI, install Sampo with `cargo install sampo --locked`, then use `sampo add`
@@ -36,8 +43,13 @@ previews the plan on a feature branch. Do not run `sampo publish` for this appli
    changelog and mark the PR **Ready for review** to run CI on its exact commit.
    Each automatic update returns the PR to draft so it can be checked again.
 4. Merge the checked release PR, then publish a GitHub Release with the matching
-   `v<workspace version>` tag on that merge commit. Use the desktop changelog entry
-   as the release notes; the core changelog provides implementation-level details.
+   `v<workspace version>` tag on that merge commit. Its notes are the desktop changelog
+   entry without the file header and the "Updated dependencies" line:
+
+   ```sh
+   python3 .github/scripts/release-notes.py v0.3.3 > notes.md
+   gh release create v0.3.3 --target <merge commit> --title v0.3.3 --notes-file notes.md
+   ```
 5. `release.yml` builds the published release's tag and uploads its Windows assets.
 
 The repository uses only `ci.yml` and `release.yml`. Sampo prepares files, not tags,

@@ -22,13 +22,17 @@ sys-locale = "0.3"
 notify = "8"
 # Pure-Rust decoders for compressed PFH5 entries: Zstandard (also used for the embedded DB
 # schema), LZ4 frames and CA's legacy LZMA1 layout.
-ruzstd = "0.9"
+mzstd = { version = "0.2.5", default-features = false, features = ["std", "decompression"] }
 lz4_flex = { version = "0.14", default-features = false, features = ["frame", "safe-decode", "checked-decode", "std"] }
 lzma-rs = "0.3"
 # Self-update from GitHub Releases: blocking API on background threads, rustls, SHA256SUMS verification.
 # Verifies the steam_api64.dll that self-update refreshes next to the executable.
 sha2 = "0.11"
 self_update = { version = "1.3", default-features = false, features = ["reqwest", "rustls", "github", "checksums"] }
+
+[dev-dependencies]
+# The encoder writes the Zstandard fixtures; the library itself only decodes.
+mzstd = "0.2.5"
 
 [features]
 # Steamworks Workshop worker; only the Windows GUI enables it.

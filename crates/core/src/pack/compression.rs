@@ -15,7 +15,6 @@ pub const MAX_ENTRY_SIZE: u64 = 256 * 1024 * 1024;
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
 const LZ4_MAGIC: [u8; 4] = [0x04, 0x22, 0x4d, 0x18];
 const LZMA_PROPERTIES: usize = 5;
-const MAX_WINDOW: u64 = 1 << 31;
 /// Capacity reserved up front; larger outputs grow only as real data arrives.
 const INITIAL_CAPACITY: usize = 4 * 1024 * 1024;
 
@@ -45,15 +44,7 @@ pub fn decompress(stored: &[u8]) -> Result<Vec<u8>> {
     }
     let size = size as usize;
     let output = match stream.first_chunk::<4>() {
-        Some(&ZSTD_MAGIC) => {
-            // Vanilla packs declare 128 MiB windows for small tables, above the decoder's 100 MiB
-            // default. A fresh decoder grows its window with the decoded data, which
-            // `read_bounded` caps, so the declared size alone allocates nothing.
-            let decoder =
-                ruzstd::decoding::StreamingDecoder::new_with_max_window_size(stream, MAX_WINDOW)
-                    .map_err(corrupt)?;
-            read_bounded(decoder, size)?
-        }
+        Some(&ZSTD_MAGIC) => zstd(stream, size)?,
         Some(&LZ4_MAGIC) => read_bounded(lz4_flex::frame::FrameDecoder::new(stream), size)?,
         _ => lzma(stream, size)?,
     };
@@ -66,6 +57,25 @@ pub fn decompress(stored: &[u8]) -> Result<Vec<u8>> {
         )));
     }
     Ok(output)
+}
+
+/// Decodes the one frame straight into its output, which also serves as the frame's history:
+/// memory grows with the decoded data, which the output limit caps, not with the window a frame
+/// declares. Vanilla packs declare 128 MiB windows for small tables, so the window limit is the
+/// format's maximum.
+fn zstd(stream: &[u8], size: usize) -> Result<Vec<u8>> {
+    const CONFIG: mzstd::DecoderConfig = match mzstd::DecodeLimits::DEFAULT
+        .with_max_window_log(mzstd::DecodeLimits::MAX_WINDOW_LOG)
+    {
+        Ok(limits) => mzstd::DecoderConfig::DEFAULT
+            .with_frame_mode(mzstd::FrameMode::Single)
+            .with_limits(limits),
+        Err(_) => panic!("the maximum window log is valid"),
+    };
+    let limits = CONFIG.limits().with_max_output_bytes(Some(size as u64));
+    mzstd::Decompressor::new(CONFIG.with_limits(limits))
+        .decompress(stream)
+        .map_err(corrupt)
 }
 
 /// Reads at most one byte more than expected, so an oversized stream is detected without
