@@ -57,8 +57,13 @@ build need `steam_api64.dll` next to the executable: copy it from
 ## Architecture notes
 
 - **Background work.** Filesystem access, pack and DB parsing, conflict analysis,
-  searching, sorting, rule application and every Steam call run on GPUI's background
-  executor; tasks are owned by the view and guarded by generation counters.
+  searching, sorting, rule application, self-update and every Steam call run on a
+  rayon pool (`crates/desktop/src/pool.rs`); tasks awaiting it are owned by the view
+  and guarded by generation counters. With the game closed the pool uses half the
+  cores (at least two); while `Warhammer3.exe` runs it is replaced by a two-thread
+  pool, and conflict checks size their pack readers to it. Rayon cannot resize a
+  pool, so work already queued on the replaced pool finishes there. The game process
+  check itself stays on GPUI's executor, so it never waits behind the work it throttles.
 - **Steam Workshop.** Initialising Steamworks with the game's app id makes Steam
   treat the process as the running game, so the GUI never does it. Each request
   (`Details`, `State`, `Subscribe`, `Unsubscribe`, `Download`, `Subscribed`) spawns

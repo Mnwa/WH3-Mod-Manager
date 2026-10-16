@@ -1,5 +1,6 @@
 //! Compatibility check of enabled mods and outdated-mod detection.
 use super::{Manager, badges::badge};
+use crate::pool;
 use crate::theme;
 use gpui_kit::{assets::IconName, *};
 use std::{
@@ -179,7 +180,7 @@ impl Manager {
             self.enabled.clone(),
             self.cancel.clone(),
         );
-        let task = cx.background_spawn(async move {
+        let task = pool::try_spawn(move || {
             let report = conflict::check(&catalog, &order, &enabled, &cancel)?;
             let issues = report.issues_by_mod();
             Ok::<_, wh3_core::Error>((sections(&report, &catalog), issues, report.warnings))
@@ -230,7 +231,7 @@ impl Manager {
             .vanilla
             .clone()
             .filter(|(path, _)| *path == game);
-        let task = cx.background_spawn(async move {
+        let task = pool::try_spawn(move || {
             let Some(updated) = steam::game_updated(&game) else {
                 return Ok((HashMap::new(), None));
             };

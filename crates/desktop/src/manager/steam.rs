@@ -1,5 +1,6 @@
 //! Steam Workshop actions: metadata refresh, updates, subscriptions and collections.
 use super::Manager;
+use crate::pool;
 use gpui_kit::*;
 use std::{
     collections::{HashMap, HashSet},
@@ -39,7 +40,7 @@ pub(crate) struct State {
 }
 
 /// Blocks for a worker round trip (about a second); call it only inside
-/// `background_spawn`/background executor tasks, never on the UI thread.
+/// [`pool`] jobs, never on the UI thread.
 fn call(request: Request) -> wh3_core::Result<Response> {
     workshop::call(&Runtime::current()?, &request)
 }
@@ -74,7 +75,7 @@ impl Manager {
             self.generation,
         );
         self.steam.busy = true;
-        let task = cx.background_spawn(async move {
+        let task = pool::try_spawn(move || {
             let Response::Details(mut items) = call(Request::Details { ids: ids.clone() })? else {
                 return Err(wh3_core::Error::Steam("unexpected answer".into()));
             };
@@ -142,7 +143,7 @@ impl Manager {
         let install = !matches!(request, Request::Unsubscribe { .. });
         self.steam.busy = true;
         self.status = message!("Sending the request to Steam…", "Отправка запроса в Steam…");
-        let task = cx.background_spawn(async move { call(request) });
+        let task = pool::try_spawn(move || call(request));
         self.steam.task = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
@@ -193,9 +194,7 @@ impl Manager {
                 if ids.is_empty() {
                     break;
                 }
-                let states = executor
-                    .spawn(async move { call(Request::State { ids }) })
-                    .await;
+                let states = pool::try_spawn(move || call(Request::State { ids })).await;
                 let Ok(Response::States(states)) = states else {
                     continue;
                 };
@@ -311,11 +310,9 @@ impl Manager {
             return;
         }
         self.steam.busy = true;
-        let task = cx.background_spawn(async move {
-            match call(Request::Details { ids: vec![id] })? {
-                Response::Details(items) => Ok(items.into_iter().next()),
-                _ => Ok::<_, wh3_core::Error>(None),
-            }
+        let task = pool::try_spawn(move || match call(Request::Details { ids: vec![id] })? {
+            Response::Details(items) => Ok(items.into_iter().next()),
+            _ => Ok::<_, wh3_core::Error>(None),
         });
         self.steam.task = Some(cx.spawn(async move |this, cx| {
             let result = task.await;

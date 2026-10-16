@@ -1,4 +1,5 @@
 use super::Manager;
+use crate::pool;
 use gpui_kit::*;
 use std::sync::Arc;
 use wh3_core::{preset::Preset, storage};
@@ -84,8 +85,7 @@ impl Manager {
         let settings = self.settings.clone();
         self.busy = true;
         self.status = wh3_core::message!("Saving…", "Сохранение…");
-        let task = cx
-            .background_spawn(async move { storage::save(&storage::settings_path()?, &settings) });
+        let task = pool::try_spawn(move || storage::save(&storage::settings_path()?, &settings));
         self.job = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
@@ -128,8 +128,7 @@ impl Manager {
         let handle = window.window_handle();
         let language = self.language;
         self.busy = true;
-        let task = cx
-            .background_spawn(async move { storage::save(&storage::settings_path()?, &settings) });
+        let task = pool::try_spawn(move || storage::save(&storage::settings_path()?, &settings));
         self.job = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
             let succeeded = result.is_ok();

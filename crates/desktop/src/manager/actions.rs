@@ -1,4 +1,5 @@
 use super::{Filter, Manager};
+use crate::pool;
 use gpui_kit::*;
 use wh3_core::{catalog::Source, pack, steam};
 
@@ -61,24 +62,23 @@ impl Manager {
             if let Ok(Ok(Some(paths))) = prompt.await
                 && let Some(path) = paths.into_iter().next()
             {
-                let result = cx
-                    .background_spawn(async move {
-                        if game && !path.join("Warhammer3.exe").is_file() {
-                            return Err(wh3_core::message!(
-                                "The folder does not contain Warhammer3.exe",
-                                "В папке отсутствует Warhammer3.exe"
-                            ));
-                        }
-                        Ok((
-                            path.clone(),
-                            if game {
-                                Some(steam::for_game(path))
-                            } else {
-                                None
-                            },
-                        ))
-                    })
-                    .await;
+                let result = pool::try_spawn(move || {
+                    if game && !path.join("Warhammer3.exe").is_file() {
+                        return Err(wh3_core::message!(
+                            "The folder does not contain Warhammer3.exe",
+                            "В папке отсутствует Warhammer3.exe"
+                        ));
+                    }
+                    Ok((
+                        path.clone(),
+                        if game {
+                            Some(steam::for_game(path))
+                        } else {
+                            None
+                        },
+                    ))
+                })
+                .await;
                 let _ = this.update(cx, |this, cx| match result {
                     Ok((path, settings)) => {
                         if let Some(settings) = settings {
@@ -108,7 +108,7 @@ impl Manager {
         };
         let path = self.catalog.mods[index].path.clone();
         self.busy = true;
-        let task = cx.background_spawn(async move {
+        let task = pool::try_spawn(move || {
             pack::index(&path).map(|files| {
                 files
                     .into_iter()
@@ -162,7 +162,7 @@ impl Manager {
         let mut selected = self.enabled.clone();
         let always = self.always_enabled_indices();
         self.busy = true;
-        let task = cx.background_spawn(async move {
+        let task = pool::spawn(move || {
             for index in indices {
                 if enabled {
                     selected.insert(index);
@@ -175,7 +175,9 @@ impl Manager {
         self.job = Some(cx.spawn(async move |this, cx| {
             let selected = task.await;
             let _ = this.update(cx, |this, cx| {
-                this.enabled = selected;
+                if let Some(selected) = selected {
+                    this.enabled = selected;
+                }
                 this.busy = false;
                 this.dirty = true;
                 this.refresh_query(cx);

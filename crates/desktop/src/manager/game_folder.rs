@@ -1,6 +1,7 @@
 //! Copy or link mods into the game's `data` folder and remove them again. Each action
 //! is started by the user, names its files and asks before deleting anything.
 use super::Manager;
+use crate::pool;
 use gpui_kit::*;
 use std::{path::PathBuf, sync::Arc};
 use wh3_core::{
@@ -15,9 +16,9 @@ impl Manager {
         if self.demo {
             return;
         }
-        let task = cx.background_spawn(async { data_folder::can_link(&std::env::temp_dir()) });
+        let task = pool::spawn(|| data_folder::can_link(&std::env::temp_dir()));
         cx.spawn(async move |this, cx| {
-            let can_link = task.await;
+            let can_link = task.await.unwrap_or(false);
             let _ = this.update(cx, |this, cx| {
                 this.can_link = can_link;
                 cx.notify();
@@ -59,8 +60,7 @@ impl Manager {
             Placement::Link => message!("Linking mods into data…", "Создание ссылок в data…"),
         };
         let cancel = self.cancel.clone();
-        let task = cx
-            .background_spawn(async move { data_folder::place(&game, &packs, placement, &cancel) });
+        let task = pool::try_spawn(move || data_folder::place(&game, &packs, placement, &cancel));
         self.job = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
@@ -127,7 +127,7 @@ impl Manager {
             return;
         };
         self.busy = true;
-        let task = cx.background_spawn(async move { Ok(data_folder::remove_all(&game, &packs)) });
+        let task = pool::try_spawn(move || Ok(data_folder::remove_all(&game, &packs)));
         self.job = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {

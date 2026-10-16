@@ -8353,6 +8353,7 @@ dependencies = [
  "lzma-rs",
  "mzstd",
  "notify",
+ "rayon",
  "regex",
  "rkyv",
  "self_update",
@@ -8370,8 +8371,11 @@ name = "wh3-mod-manager"
 version = "0.3.2"
 dependencies = [
  "embed-resource",
+ "futures-channel",
+ "futures-executor",
  "gpui-kit",
  "mimalloc3",
+ "rayon",
  "resvg 0.48.1",
  "rust-i18n",
  "serde_json",

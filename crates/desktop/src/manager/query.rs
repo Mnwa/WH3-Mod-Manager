@@ -1,4 +1,5 @@
 use super::{Filter, Manager, SortKey};
+use crate::pool;
 use gpui_kit::*;
 use std::{collections::HashSet, sync::Arc, time::Duration};
 use wh3_core::catalog::Catalog;
@@ -82,48 +83,50 @@ impl Manager {
         let executor = cx.background_executor().clone();
         self.search_task = Some(cx.spawn(async move |this, cx| {
             executor.timer(Duration::from_millis(75)).await;
-            let (visible, right, groups) = executor
-                .spawn(async move {
-                    let mut visible = catalog.query(&query, &order);
-                    visible.retain(|i| hidden.contains(i) == (filter == Filter::Hidden));
-                    if let Some(category) = category {
-                        visible.retain(|&i| {
-                            catalog.mods[i]
-                                .metadata
-                                .categories
+            let Some((visible, right, groups)) = pool::spawn(move || {
+                let mut visible = catalog.query(&query, &order);
+                visible.retain(|i| hidden.contains(i) == (filter == Filter::Hidden));
+                if let Some(category) = category {
+                    visible.retain(|&i| {
+                        catalog.mods[i]
+                            .metadata
+                            .categories
+                            .iter()
+                            .any(|c| c.as_str() == &*category)
+                    });
+                }
+                let mut right = Vec::new();
+                if let Some(enabled) = &enabled {
+                    match filter {
+                        _ if dual => {
+                            // `visible` is still in load order here.
+                            right = visible
                                 .iter()
-                                .any(|c| c.as_str() == &*category)
-                        });
-                    }
-                    let mut right = Vec::new();
-                    if let Some(enabled) = &enabled {
-                        match filter {
-                            _ if dual => {
-                                // `visible` is still in load order here.
-                                right = visible
-                                    .iter()
-                                    .copied()
-                                    .filter(|i| enabled.contains(i))
-                                    .collect();
-                                visible.retain(|i| !enabled.contains(i));
-                            }
-                            Filter::Enabled => visible.retain(|i| enabled.contains(i)),
-                            Filter::Disabled => visible.retain(|i| !enabled.contains(i)),
-                            Filter::All | Filter::Hidden => {}
+                                .copied()
+                                .filter(|i| enabled.contains(i))
+                                .collect();
+                            visible.retain(|i| !enabled.contains(i));
                         }
+                        Filter::Enabled => visible.retain(|i| enabled.contains(i)),
+                        Filter::Disabled => visible.retain(|i| !enabled.contains(i)),
+                        Filter::All | Filter::Hidden => {}
                     }
-                    sort_rows(&catalog, &mut visible, sort.key, enabled.as_ref());
-                    if sort.descending {
-                        visible.reverse();
-                    }
-                    let groups = if grouping {
-                        group_by_category(&catalog, &visible)
-                    } else {
-                        vec![]
-                    };
-                    (visible, right, groups)
-                })
-                .await;
+                }
+                sort_rows(&catalog, &mut visible, sort.key, enabled.as_ref());
+                if sort.descending {
+                    visible.reverse();
+                }
+                let groups = if grouping {
+                    group_by_category(&catalog, &visible)
+                } else {
+                    vec![]
+                };
+                (visible, right, groups)
+            })
+            .await
+            else {
+                return;
+            };
             let _ = this.update(cx, |this, cx| {
                 if generation != this.query_generation {
                     return;

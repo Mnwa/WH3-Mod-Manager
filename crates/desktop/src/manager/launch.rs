@@ -1,5 +1,6 @@
 //! Play, Continue, campaign saves and game start options.
 use super::{Manager, presets::LAST_LAUNCH};
+use crate::pool;
 use gpui_kit::*;
 use std::{path::PathBuf, sync::Arc};
 use wh3_core::{
@@ -41,7 +42,7 @@ impl Manager {
             return;
         };
         self.launch.folder = Some(folder.clone());
-        let task = cx.background_spawn(async move { saves::list(&folder) });
+        let task = pool::try_spawn(move || saves::list(&folder));
         self.launch.task = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
@@ -122,7 +123,7 @@ impl Manager {
             self.follow_staging(progress.clone(), cx);
         }
         let cancel = self.cancel.clone();
-        let task = cx.background_spawn(async move {
+        let task = pool::try_spawn(move || {
             // Rules are applied again here so a pending debounced pass cannot be skipped.
             storage::save(&storage::settings_path()?, &settings)?;
             let (_, applied) = rules.run(&catalog, &order, &enabled, &pinned);
@@ -183,7 +184,7 @@ impl Manager {
             return;
         }
         self.busy = true;
-        let task = cx.background_spawn(async move { saves::mods(&path) });
+        let task = pool::try_spawn(move || saves::mods(&path));
         self.job = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
@@ -252,7 +253,7 @@ impl Manager {
             self.settings.clone()
         });
         self.busy = true;
-        let task = cx.background_spawn(async move {
+        let task = pool::try_spawn(move || {
             if let Some(settings) = settings {
                 storage::save(&storage::settings_path()?, &settings)?;
             }

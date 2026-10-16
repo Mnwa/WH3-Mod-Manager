@@ -1,6 +1,7 @@
 //! Keeps the screen in step with the disk and the game: rescans after mod files change,
 //! refreshes saves, notices the running game and starts a queued launch when it closes.
 use super::Manager;
+use crate::pool;
 use gpui_kit::*;
 use std::sync::Arc;
 use std::{
@@ -124,6 +125,7 @@ impl Manager {
             return;
         }
         self.live.checking_game = true;
+        // Not on the pool: this check sets its width, and must not wait behind its work.
         let task = cx.background_spawn(async { game_process::running() });
         self.live.game_task = Some(cx.spawn(async move |this, cx| {
             let running = task.await.unwrap_or(false);
@@ -137,6 +139,7 @@ impl Manager {
                     return;
                 }
                 this.live.game_running = running;
+                pool::set_game_running(running);
                 this.on_game_state(running, cx);
                 if !running {
                     this.refresh_saves(cx);
@@ -162,7 +165,7 @@ impl Manager {
         let roots = self.settings.roots.clone();
         let saves = self.launch.folder.clone().or_else(wh3_core::saves::folder);
         self.live.roots = roots.clone();
-        let task = cx.background_spawn(async move { watch::watch(&roots, saves.as_deref()) });
+        let task = pool::try_spawn(move || watch::watch(&roots, saves.as_deref()));
         self.live.setup = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
@@ -308,7 +311,7 @@ impl Manager {
             ),
             l.text("Close the game", "Закрыть игру"),
             |this, cx| {
-                let task = cx.background_spawn(async { game_process::close() });
+                let task = pool::try_spawn(game_process::close);
                 cx.spawn(async move |this, cx| {
                     let result = task.await;
                     let _ = this.update(cx, |this, cx| {

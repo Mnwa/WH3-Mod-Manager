@@ -1,6 +1,7 @@
 //! Load-order rules: user rules from the library, pack rules from `whmm\load_order.whmm`,
 //! applied to the explicit order without moving pinned (hand-placed) mods.
 use super::Manager;
+use crate::pool;
 use gpui_kit::*;
 use std::{
     collections::HashSet,
@@ -105,9 +106,11 @@ impl Manager {
         let executor = cx.background_executor().clone();
         self.rules.task = Some(cx.spawn(async move |this, cx| {
             executor.timer(Duration::from_millis(120)).await;
-            let (resolution, applied) = executor
-                .spawn(async move { inputs.run(&catalog, &order, &enabled, &pinned) })
-                .await;
+            let Some((resolution, applied)) =
+                pool::spawn(move || inputs.run(&catalog, &order, &enabled, &pinned)).await
+            else {
+                return;
+            };
             let _ = this.update(cx, |this, cx| {
                 if generation != this.rules.generation {
                     return;
@@ -136,9 +139,8 @@ impl Manager {
             return;
         }
         let catalog = self.catalog.clone();
-        let task = cx.background_spawn(async move {
-            load_order::pack_rules(&catalog, &AtomicBool::new(false))
-        });
+        let task =
+            pool::try_spawn(move || load_order::pack_rules(&catalog, &AtomicBool::new(false)));
         self.rules.scan_task = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {

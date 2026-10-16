@@ -1,4 +1,5 @@
 use super::Manager;
+use crate::pool;
 use gpui_kit::*;
 use wh3_core::{
     localization::Language,
@@ -40,7 +41,7 @@ impl Manager {
         }
         let handle = window.window_handle();
         self.preferences_busy = true;
-        let task = cx.background_spawn(async { preferences::load(&preferences::path()?) });
+        let task = pool::try_spawn(|| preferences::load(&preferences::path()?));
         self.preferences_task = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = cx.update_window(handle, |_, window, cx| {
@@ -102,9 +103,8 @@ impl Manager {
             let Ok(prefs) = this.update(cx, |this, _| this.prefs) else {
                 return;
             };
-            let result = executor
-                .spawn(async move { preferences::save(&preferences::path()?, &prefs) })
-                .await;
+            let result =
+                pool::try_spawn(move || preferences::save(&preferences::path()?, &prefs)).await;
             if let Err(error) = result {
                 let _ = this.update(cx, |this, cx| {
                     this.status = error.message();

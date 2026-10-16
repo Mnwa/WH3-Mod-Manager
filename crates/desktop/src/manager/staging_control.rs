@@ -1,6 +1,7 @@
 //! Workshop staging around a launch: progress while preparing, cleanup after the game
 //! closes, and the game's process priority.
 use super::Manager;
+use crate::pool;
 use gpui_kit::*;
 use std::{
     sync::{Arc, atomic::Ordering},
@@ -43,9 +44,11 @@ impl Manager {
         let Some(game) = self.settings.game_path.clone().filter(|_| !self.demo) else {
             return;
         };
-        let task = cx.background_spawn(async move { staging::size(&game) });
+        let task = pool::spawn(move || staging::size(&game));
         cx.spawn(async move |this, cx| {
-            let size = task.await;
+            let Some(size) = task.await else {
+                return;
+            };
             let _ = this.update(cx, |this, cx| {
                 this.live.staging_size = size;
                 cx.notify();
@@ -67,7 +70,7 @@ impl Manager {
             cx.notify();
             return;
         }
-        let task = cx.background_spawn(async move { staging::clean(&game) });
+        let task = pool::try_spawn(move || staging::clean(&game));
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
@@ -102,7 +105,7 @@ impl Manager {
     pub(super) fn on_game_state(&mut self, running: bool, cx: &mut Context<Self>) {
         let options = self.settings.options;
         if running && options.raise_priority {
-            let task = cx.background_spawn(async { game_process::raise_priority() });
+            let task = pool::try_spawn(game_process::raise_priority);
             cx.spawn(async move |this, cx| {
                 if let Err(error) = task.await {
                     let _ = this.update(cx, |this, cx| {

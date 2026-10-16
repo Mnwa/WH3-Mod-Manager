@@ -13,9 +13,13 @@ gpui-kit = "0.7"
 # Global allocator for the GUI binary; the core library stays allocator-agnostic.
 mimalloc3 = "0.1"
 serde_json.workspace = true
+# Pool for blocking work, resized while the game runs (src/pool.rs).
+rayon = "1"
+futures-channel = "0.3"
 rust-i18n = "4.2"
 
 [dev-dependencies]
+futures-executor = "0.3"
 gpui-kit = { version = "0.7", features = ["test-support"] }
 # Renders assets/logo.svg into assets/app.ico (examples/render_icon.rs); GPUI already
 # depends on this version.

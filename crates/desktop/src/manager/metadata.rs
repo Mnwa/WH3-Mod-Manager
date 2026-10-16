@@ -1,4 +1,5 @@
 use super::Manager;
+use crate::pool;
 use gpui_kit::*;
 use std::{path::PathBuf, sync::Arc};
 use wh3_core::{catalog::Catalog, metadata};
@@ -25,7 +26,7 @@ impl Manager {
             if let Ok(Ok(Some(paths))) = prompt.await
                 && let Some(path) = paths.into_iter().next() {
                     let Ok(catalog) = this.update(cx, |this, cx| { this.busy = true; cx.notify(); this.catalog.clone() }) else { return; };
-                    let result = cx.background_spawn(async move {
+                    let result = pool::try_spawn(move || {
                         let bundle = metadata::read(&path)?;
                         let mut catalog = Catalog::new(catalog.mods.clone());
                         let matched = metadata::apply(&mut catalog, &bundle.mods);
@@ -98,9 +99,8 @@ impl Manager {
                     return;
                 };
                 if let Ok(Ok(Some(destination))) = prompt.await {
-                    let result = cx
-                        .background_spawn(async move { metadata::export(&source, &destination) })
-                        .await;
+                    let result =
+                        pool::try_spawn(move || metadata::export(&source, &destination)).await;
                     let _ = this.update(cx, |this, cx| {
                         this.status = match result {
                             Ok(bundle) => wh3_core::message!(

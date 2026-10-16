@@ -25,6 +25,8 @@ notify = "8"
 mzstd = { version = "0.2.5", default-features = false, features = ["std", "decompression"] }
 lz4_flex = { version = "0.14", default-features = false, features = ["frame", "safe-decode", "checked-decode", "std"] }
 lzma-rs = "0.3"
+# Only reads the width of the desktop's pool, so conflict checks shrink with it.
+rayon = "1"
 # Self-update from GitHub Releases: blocking API on background threads, rustls, SHA256SUMS verification.
 # Verifies the steam_api64.dll that self-update refreshes next to the executable.
 sha2 = "0.11"

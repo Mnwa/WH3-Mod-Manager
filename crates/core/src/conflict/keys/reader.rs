@@ -87,16 +87,23 @@ fn read_job(job: &Job, cancelled: &AtomicBool, send: &mut dyn FnMut(Outcome) -> 
     }
 }
 
+/// Inside a rayon pool its width bounds the readers, so the desktop's check shrinks with
+/// its pool while the game runs. Elsewhere (CLI, tests) every core may be used; asking
+/// rayon there would start its global pool just to count.
+fn budget() -> usize {
+    match rayon::current_thread_index() {
+        Some(_) => rayon::current_num_threads(),
+        None => thread::available_parallelism().map_or(1, |count| count.get()),
+    }
+}
+
 /// Reads every job and hands each outcome to `merge` on the calling thread.
 pub(super) fn read_all(
     jobs: &[Job],
     cancelled: &AtomicBool,
     mut merge: impl FnMut(Outcome),
 ) -> Result<()> {
-    let threads = thread::available_parallelism()
-        .map_or(1, |count| count.get())
-        .clamp(1, MAX_THREADS)
-        .min(jobs.len());
+    let threads = budget().clamp(1, MAX_THREADS).min(jobs.len());
     if threads <= 1 {
         for job in jobs {
             read_job(job, cancelled, &mut |outcome| {

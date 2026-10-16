@@ -1,3 +1,4 @@
+use crate::pool;
 use gpui_kit::*;
 use std::time::Duration;
 use wh3_core::{localization::Message, update};
@@ -55,9 +56,7 @@ impl Updater {
         let executor = cx.background_executor().clone();
         self.task = Some(cx.spawn(async move |this, cx| {
             executor.timer(delay).await;
-            let result = executor
-                .spawn(async { update::check(CURRENT_VERSION) })
-                .await;
+            let result = pool::try_spawn(|| update::check(CURRENT_VERSION)).await;
             let _ = this.update(cx, |this, cx| {
                 this.phase = match result {
                     Ok(Some(available)) => Phase::Available(available),
@@ -75,7 +74,7 @@ impl Updater {
             return;
         };
         self.phase = Phase::Installing(available.version.clone());
-        let task = cx.background_spawn(async { update::install(CURRENT_VERSION) });
+        let task = pool::try_spawn(|| update::install(CURRENT_VERSION));
         self.task = Some(cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {

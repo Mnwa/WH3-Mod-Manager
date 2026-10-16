@@ -8,7 +8,20 @@ fn main() {
         time::{Duration, Instant},
     };
     use wh3_core::localization::Language;
-    use wh3_mod_manager::{manager::Manager, theme};
+    use wh3_mod_manager::{manager::Manager, pool, theme};
+    // Loading and searching run on the rayon pool, which the test dispatcher does not
+    // know: run until both are idle. Sampled before the run, so a wake-up sent by a job
+    // finishing meanwhile is still processed.
+    let settle = |cx: &HeadlessAppContext| {
+        loop {
+            let idle = pool::idle();
+            cx.run_until_parked();
+            if idle && pool::idle() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    };
     let mut cx = HeadlessAppContext::with_platform(
         gpui_kit::platform::current_platform(true).text_system(),
         Arc::new(wh3_mod_manager::assets::AppAssets),
@@ -29,7 +42,7 @@ fn main() {
             .unwrap();
         let manager = manager.unwrap();
         for _ in 0..20 {
-            cx.run_until_parked();
+            settle(&cx);
             cx.advance_clock(Duration::from_millis(100));
             cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))
                 .unwrap();
@@ -86,7 +99,7 @@ fn main() {
         })
         .unwrap();
         for _ in 0..4 {
-            cx.run_until_parked();
+            settle(&cx);
             cx.advance_clock(Duration::from_millis(100));
             cx.update_window(window.into(), |_, window, cx| window.render_frame(cx))
                 .unwrap();
@@ -99,7 +112,7 @@ fn main() {
         })
         .unwrap();
         for _ in 0..4 {
-            cx.run_until_parked();
+            settle(&cx);
             cx.advance_clock(Duration::from_millis(100));
             cx.update_window(window.into(), |_, window, cx| window.render_frame(cx))
                 .unwrap();

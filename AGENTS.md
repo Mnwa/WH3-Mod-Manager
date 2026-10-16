@@ -58,7 +58,9 @@ workspace rather than creating empty layers:
 - Children communicate through callbacks or events. They never reach into parents.
   Use model methods to change shared state and scope notifications to affected views.
 - Never block the GUI thread with filesystem access, pack parsing, serialization,
-  conflict analysis, large searches or Steam calls. Use `cx.background_spawn`.
+  conflict analysis, large searches or Steam calls. Run them on the desktop rayon pool
+  (`pool::spawn`/`pool::try_spawn`), which shrinks while the game runs. Only the game
+  process check stays on `cx.background_spawn`: it sets the pool's width.
 - Process checks (`tasklist`, `taskkill`, priority) and file watching run off the GUI
   thread; spawned helpers use `CREATE_NO_WINDOW` so no console flashes.
 - Never initialise Steamworks in the GUI process: it would present the manager as the

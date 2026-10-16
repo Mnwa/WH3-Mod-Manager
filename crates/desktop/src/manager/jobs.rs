@@ -1,4 +1,5 @@
 use super::{Filter, Manager, Sort, SortKey, presets::APP_START};
+use crate::pool;
 use crate::update::{Updater, UpdaterEvent};
 use gpui_kit::{
     component::input::{InputEvent, InputState},
@@ -101,7 +102,7 @@ impl Manager {
         this.start_live_updates(cx);
         this.probe_links(cx);
         let cancel = this.cancel.clone();
-        let task = cx.background_spawn(async move {
+        let task = pool::try_spawn(move || {
             if let Some(count) = demo {
                 return Ok((
                     storage::Settings::default(),
@@ -211,7 +212,7 @@ impl Manager {
         let cancel = self.cancel.clone();
         let roots = self.settings.roots.clone();
         let metadata = self.settings.metadata.clone();
-        let task = cx.background_spawn(async move {
+        let task = pool::try_spawn(move || {
             let mut result = scan::scan(&roots, &cancel)?;
             wh3_core::metadata::apply(&mut result.catalog, &metadata);
             Ok::<_, wh3_core::Error>(result)

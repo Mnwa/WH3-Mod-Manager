@@ -1,4 +1,5 @@
 use super::Manager;
+use crate::pool;
 use gpui_kit::*;
 use std::path::PathBuf;
 use wh3_core::{
@@ -26,23 +27,20 @@ impl Manager {
             if let Ok(Ok(Some(paths))) = prompt.await
                 && let Some(path) = paths.into_iter().next()
             {
-                let result = cx
-                    .background_spawn(async move {
-                        let metadata = std::fs::metadata(&path).map_err(|e| {
-                            wh3_core::message!("File error: {}", "Ошибка файла: {}", e)
-                        })?;
-                        if metadata.len() > 32 * 1024 * 1024 {
-                            return Err(wh3_core::message!(
-                                "Preset file exceeds 32 MiB",
-                                "Файл пресетов больше 32 МБ"
-                            ));
-                        }
-                        let bytes = std::fs::read(path).map_err(|e| {
-                            wh3_core::message!("File error: {}", "Ошибка файла: {}", e)
-                        })?;
-                        Preset::parse(&bytes).map_err(|e| e.message())
-                    })
-                    .await;
+                let result = pool::try_spawn(move || {
+                    let metadata = std::fs::metadata(&path)
+                        .map_err(|e| wh3_core::message!("File error: {}", "Ошибка файла: {}", e))?;
+                    if metadata.len() > 32 * 1024 * 1024 {
+                        return Err(wh3_core::message!(
+                            "Preset file exceeds 32 MiB",
+                            "Файл пресетов больше 32 МБ"
+                        ));
+                    }
+                    let bytes = std::fs::read(path)
+                        .map_err(|e| wh3_core::message!("File error: {}", "Ошибка файла: {}", e))?;
+                    Preset::parse(&bytes).map_err(|e| e.message())
+                })
+                .await;
                 let _ = this.update(cx, |this, cx| {
                     match result {
                         Ok(presets) => {
@@ -70,11 +68,10 @@ impl Manager {
         let prompt = cx.prompt_for_new_path(&PathBuf::from("."), Some("preset.json"));
         self.io_task = Some(cx.spawn(async move |this, cx| {
             if let Ok(Ok(Some(path))) = prompt.await {
-                let result = cx
-                    .background_spawn(async move {
-                        storage::atomic_write(&path, &serde_json::to_vec_pretty(&preset)?)
-                    })
-                    .await;
+                let result = pool::try_spawn(move || {
+                    storage::atomic_write(&path, &serde_json::to_vec_pretty(&preset)?)
+                })
+                .await;
                 let _ = this.update(cx, |this, cx| {
                     this.status = match result {
                         Ok(()) => wh3_core::message!("Preset exported", "Пресет экспортирован"),
