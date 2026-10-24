@@ -10,7 +10,8 @@ features and known differences from the original manager are tracked in
   DB tables and schema, compatibility analysis, load-order rules, presets, metadata
   import/export, saves, launch and start pack, binary persistence, Steam Workshop
   worker and self-update. No GUI dependencies.
-- `crates/desktop` (`wh3-mod-manager`): the GPUI application. `manager/` is the mod
+- `crates/desktop` (`wh3-mod-manager`): the GPUI application, built on the GPUI Fast
+  backend through the `gpui-kit` `gpui-fast` feature. `manager/` is the mod
   management screen, `update/` the self-update slice, `assets.rs` the icon source.
 - `crates/core/assets`: the embedded WH3 DB schema and its `NOTICE`.
 - `crates/desktop/assets`: `logo.svg` (the source of truth for the logo, shown in the

@@ -9,7 +9,8 @@ publish = false
 
 [dependencies]
 wh3-core = { path = "../core", features = ["steam"] }
-gpui-kit = "0.7"
+# GPUI Fast backend: retained scroll layers and faster layout; imports stay `gpui_kit::*`.
+gpui-kit = { version = "0.8", features = ["gpui-fast"] }
 # Global allocator for the GUI binary; the core library stays allocator-agnostic.
 mimalloc3 = "0.1"
 serde_json.workspace = true
@@ -20,10 +21,10 @@ rust-i18n = "4.2"
 
 [dev-dependencies]
 futures-executor = "0.3"
-gpui-kit = { version = "0.7", features = ["test-support"] }
+gpui-kit = { version = "0.8", features = ["gpui-fast", "test-support"] }
 # Renders assets/logo.svg into assets/app.ico (examples/render_icon.rs); GPUI already
 # depends on this version.
-resvg = { version = "0.48", default-features = false }
+resvg = { version = "0.46", default-features = false }
 
 [build-dependencies]
 # Already in the graph through GPUI's Windows manifest; compiles the icon and version info.

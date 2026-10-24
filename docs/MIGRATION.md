@@ -7,7 +7,7 @@ This is a standalone Rust application; Electron is not included in the distribut
 
 | Capability | Rust implementation |
 |---|---|
-| Mod list | Native GPUI with virtualized, fixed-height rows and an always-visible scrollbar; no WebView |
+| Mod list | Native GPUI (GPUI Fast backend through `gpui-kit`) with virtualized, fixed-height rows and an always-visible scrollbar; no WebView |
 | Columns | Load order, enabled, thumbnail, title with badges, pack (coloured by source), author, relative update time, size |
 | Thumbnails | Original rules: same-stem `.png`/`.jpg` next to the pack, first image in a Workshop item folder, Data mods borrow the Workshop copy's image; decoded lazily by GPUI |
 | Large libraries | Synthetic 1k/10k/100k tests; background scanning, search and sorting |
