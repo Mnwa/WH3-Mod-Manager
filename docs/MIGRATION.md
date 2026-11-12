@@ -25,10 +25,11 @@ This is a standalone Rust application; Electron is not included in the distribut
 | Original metadata | Source-only `wh3-meta` CLI (not in release assets), GUI export from config, import of v3 games.wh3 and legacy configurations, including rules, disabled rules, hidden and always-enabled mods and start options |
 | Titles, authors, categories, tags | Imported, stored in binary format and searchable |
 | Persistence | rkyv WHM4 (hidden, always-enabled, start options including Workshop staging and priority, load-order rules) with WHM1–WHM3 migration, bytecheck, CRC32, atomic replacement and previous-generation backup; `WH3MM_HOME` overrides the data folder |
-| Languages | EN/RU switch in the top bar; the system display language is used until the user picks one (stored in the WHP2 preferences record); translated labels, reports, errors and edit menus |
+| Languages | EN/RU switch in the top bar; the system display language is used until the user picks one (stored in the WHP2 preferences record); translated labels, reports and errors; edit menus use GPUI Kit's built-in Russian locale |
+| Input caret | Blinks normally while editing, then stays visible after five seconds without activity; focus, editing or cursor movement resumes blinking |
 | List layout | View menu: one list or two lists (not enabled \| enabled in load order; ticking or dropping a mod moves it across, drag reorders the right pane), category groups (each mod under every category, uncategorized first, collapsed at first, per-group enable/disable), row size Compact/Comfortable/Roomy, resizable Pack/Author/Updated/Size columns (drag the edge, double-click resets); all stored in WHP2 |
 | Steam libraries | Standard paths and libraryfolders.vdf discovery; manual folder selection |
-| Scanning | Data, Workshop and custom folders; cycle/path deduplication; per-file error report |
+| Scanning | Data, Workshop and custom folders; cycle/path deduplication; per-file error report; animated spinner and progress bar during initial loading and rescans; indeterminate during discovery, then fills by unique pack files examined (including vanilla and damaged packs); tooltip reports pack progress and readable mods found; progress resets per scan |
 | Pack files | PFH4/PFH5 headers/indexes, including hashed-name PFH5; payload reading with zstd, LZ4 and LZMA decompression; minimal PFH5 writer for the start pack |
 | DB tables | Embedded WH3 schema (RPFM-derived), strict DB header/row parsing of all field types used by WH3 |
 | Pack inspection | Virtualized file names, sizes and compression flags |

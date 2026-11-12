@@ -13,6 +13,9 @@ impl Manager {
 
     fn apply_language(&mut self, language: Language, window: &mut Window, cx: &mut Context<Self>) {
         self.language = language;
+        if let Some(progress) = &self.scan_progress {
+            progress.update(cx, |progress, cx| progress.set_language(language, cx));
+        }
         gpui_kit::component::set_locale(language.code());
         self.search.update(cx, |input, cx| {
             input.set_placeholder(

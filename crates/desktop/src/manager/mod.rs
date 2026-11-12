@@ -33,6 +33,7 @@ mod row_menu;
 mod row_menu_data;
 mod rules;
 mod rules_view;
+mod scan_progress;
 mod selection;
 mod settings_menu;
 mod settings_staging;
@@ -141,6 +142,7 @@ pub struct Manager {
     pub(super) generation: u64,
     pub(super) query_generation: u64,
     pub(super) job: Option<Task<()>>,
+    scan_progress: Option<Entity<scan_progress::ScanProgress>>,
     pub(super) search_task: Option<Task<()>>,
     pub(super) io_task: Option<Task<()>>,
     pub(super) launch: launch::State,

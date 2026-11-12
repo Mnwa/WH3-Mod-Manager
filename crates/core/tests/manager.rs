@@ -1,5 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-use std::{collections::HashSet, fs, sync::atomic::AtomicBool};
+use std::{
+    collections::HashSet,
+    fs,
+    sync::atomic::{AtomicBool, Ordering},
+};
 use wh3_core::{
     catalog::{Catalog, Mod, Source},
     conflict, launch, pack,
@@ -83,7 +87,31 @@ fn scan_skips_vanilla_packs_deduplicates_roots_and_reports_bad_packs() {
     fixture(&temp.path().join("movie.pack"), 4, &[], false);
     fs::write(temp.path().join("bad.pack"), b"broken").unwrap();
     let root = (temp.path().to_owned(), Source::Data);
-    let result = scan::scan(&[root.clone(), root], &AtomicBool::new(false)).unwrap();
+    let mut progress = Vec::new();
+    let result =
+        scan::scan_with_progress(&[root.clone(), root], &AtomicBool::new(false), |count| {
+            progress.push(count);
+        })
+        .unwrap();
+    assert_eq!(progress[0], scan::Progress::default());
+    assert_eq!(
+        progress[1],
+        scan::Progress {
+            total: Some(4),
+            completed: 0,
+            mods: 0
+        }
+    );
+    assert_eq!(
+        progress
+            .iter()
+            .skip(2)
+            .map(|state| state.completed)
+            .collect::<Vec<_>>(),
+        [1, 2, 3, 4]
+    );
+    assert!(progress.iter().skip(1).all(|state| state.total == Some(4)));
+    assert_eq!(progress.last().unwrap().mods, 2);
     assert_eq!(result.catalog.mods.len(), 2);
     assert_eq!(result.warnings.len(), 1);
     assert!(result.catalog.mods.iter().any(|item| item.movie));
@@ -93,6 +121,52 @@ fn scan_skips_vanilla_packs_deduplicates_roots_and_reports_bad_packs() {
 fn cancellation_stops_scan_before_work() {
     let result = scan::scan(&[("unused".into(), Source::Custom)], &AtomicBool::new(true));
     assert!(matches!(result, Err(wh3_core::Error::Cancelled)));
+}
+
+#[test]
+fn progress_starts_at_zero_for_an_empty_scan() {
+    let mut progress = Vec::new();
+    let result =
+        scan::scan_with_progress(&[], &AtomicBool::new(false), |count| progress.push(count))
+            .unwrap();
+    assert_eq!(
+        progress,
+        [
+            scan::Progress::default(),
+            scan::Progress {
+                total: Some(0),
+                completed: 0,
+                mods: 0
+            }
+        ]
+    );
+    assert!(result.catalog.mods.is_empty());
+}
+
+#[test]
+fn cancellation_during_progress_stops_before_the_next_mod() {
+    let temp = tempfile::tempdir().unwrap();
+    fixture(&temp.path().join("a.pack"), 3, &[], false);
+    fixture(&temp.path().join("b.pack"), 3, &[], false);
+    let cancel = AtomicBool::new(false);
+    let mut progress = Vec::new();
+    let result =
+        scan::scan_with_progress(&[(temp.path().into(), Source::Custom)], &cancel, |count| {
+            progress.push(count);
+            if count.completed == 1 {
+                cancel.store(true, Ordering::Relaxed);
+            }
+        });
+    assert!(matches!(result, Err(wh3_core::Error::Cancelled)));
+    assert_eq!(
+        progress.last().unwrap(),
+        &scan::Progress {
+            total: Some(2),
+            completed: 1,
+            mods: 1
+        }
+    );
+    assert_eq!(progress.len(), 3);
 }
 
 #[test]

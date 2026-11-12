@@ -2,7 +2,7 @@
 //! enabled checkboxes and Play, so the eye always finds "what will run" first.
 use gpui_kit::{
     App, Hsla,
-    component::{Theme, ThemeMode},
+    component::{Theme, ThemeMode, input::CursorBlink},
     rgb,
 };
 
@@ -88,4 +88,9 @@ pub fn install(cx: &mut App) {
     colors.list_active_border = Some("#d4a64a".into());
     theme.dark_theme = std::rc::Rc::new(dark);
     Theme::change(ThemeMode::Dark, None, cx);
+    Theme::update(cx, |theme| {
+        // Focused search fields should stop requesting blink frames while idle.
+        theme.cursor_blink = CursorBlink::blinking(std::time::Duration::from_millis(500))
+            .with_idle_timeout(std::time::Duration::from_secs(5));
+    });
 }

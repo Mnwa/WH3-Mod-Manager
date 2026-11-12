@@ -169,6 +169,7 @@ impl Manager {
     pub(super) fn toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let l = self.language;
         let idle = !self.busy && !self.demo;
+        let scanning = !self.catalog.mods.is_empty() && self.scan_progress.is_some();
         div()
             .flex()
             .items_center()
@@ -181,7 +182,7 @@ impl Manager {
             .bg(theme::panel())
             .child(self.brand())
             .child(self.folders_menu(cx))
-            .child(
+            .children((!scanning).then(|| {
                 Button::new("rescan")
                     .icon(IconName::RefreshCw)
                     .small()
@@ -193,8 +194,9 @@ impl Manager {
                         "Rescan mods: pick up new and updated .pack files",
                         "Пересканировать моды: найти новые и обновлённые .pack-файлы",
                     ))
-                    .on_click(cx.listener(|this, _, _, cx| this.rescan(cx))),
-            )
+                    .on_click(cx.listener(|this, _, _, cx| this.rescan(cx)))
+            }))
+            .when(scanning, |bar| bar.children(self.scan_progress.clone()))
             .child(div().flex_1())
             .children(crate::update::update_button(&self.updater, l, cx))
             .child(self.workshop_menu(cx))

@@ -1,8 +1,11 @@
-use super::{Filter, Manager, Sort, SortKey, presets::APP_START};
+use super::{Filter, Manager, Sort, SortKey, presets::APP_START, scan_progress::ScanProgress};
 use crate::pool;
 use crate::update::{Updater, UpdaterEvent};
 use gpui_kit::{
-    component::input::{InputEvent, InputState},
+    component::{
+        Size,
+        input::{InputEvent, InputState},
+    },
     *,
 };
 use std::sync::{
@@ -13,7 +16,6 @@ use wh3_core::{catalog::Catalog, preset::Preset, scan, steam, storage};
 
 impl Manager {
     pub fn new(demo: Option<usize>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        crate::i18n::install();
         let search = cx.new(|cx| {
             InputState::new(window, cx).placeholder(
                 wh3_core::localization::Language::default().text(
@@ -38,6 +40,8 @@ impl Manager {
             UpdaterEvent::RestartRequested => this.restart_for_update(cx),
         });
         let update_phase = cx.observe(&updater, |_, _, cx| cx.notify());
+        let scan_progress = cx.new(|cx| ScanProgress::new(Default::default(), Size::Large, cx));
+        let progress = scan_progress.read(cx).reporter();
         let mut this = Self {
             catalog: Arc::default(),
             order: Arc::default(),
@@ -86,6 +90,7 @@ impl Manager {
             generation: 0,
             query_generation: 0,
             job: None,
+            scan_progress: Some(scan_progress),
             search_task: None,
             io_task: None,
             launch: Default::default(),
@@ -116,7 +121,7 @@ impl Manager {
             if settings.game_path.is_none() && settings.roots.is_empty() {
                 settings = steam::discover();
             }
-            let mut result = scan::scan(&settings.roots, &cancel)?;
+            let mut result = scan::scan_with_progress(&settings.roots, &cancel, progress)?;
             wh3_core::metadata::apply(&mut result.catalog, &settings.metadata);
             Ok::<_, wh3_core::Error>((settings, result))
         });
@@ -124,6 +129,7 @@ impl Manager {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
                 this.busy = false;
+                this.scan_progress = None;
                 this.cancellable = false;
                 match result {
                     Ok((settings, scan)) => {
@@ -212,8 +218,16 @@ impl Manager {
         let cancel = self.cancel.clone();
         let roots = self.settings.roots.clone();
         let metadata = self.settings.metadata.clone();
+        let size = if self.catalog.mods.is_empty() {
+            Size::Large
+        } else {
+            Size::Small
+        };
+        let progress = cx.new(|cx| ScanProgress::new(self.language, size, cx));
+        let report = progress.read(cx).reporter();
+        self.scan_progress = Some(progress);
         let task = pool::try_spawn(move || {
-            let mut result = scan::scan(&roots, &cancel)?;
+            let mut result = scan::scan_with_progress(&roots, &cancel, report)?;
             wh3_core::metadata::apply(&mut result.catalog, &metadata);
             Ok::<_, wh3_core::Error>(result)
         });
@@ -224,6 +238,7 @@ impl Manager {
                     return;
                 }
                 this.busy = false;
+                this.scan_progress = None;
                 this.cancellable = false;
                 match result {
                     Ok(scan) => this.apply_scan(scan, cx),

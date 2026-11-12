@@ -17,9 +17,74 @@ pub struct Scan {
     pub warnings: Vec<crate::localization::Message>,
 }
 
+/// File discovery has an unknown total; reading starts once discovery is complete.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Progress {
+    pub total: Option<usize>,
+    /// Unique packs examined, including vanilla and damaged files.
+    pub completed: usize,
+    /// Readable mods collected, excluding vanilla and damaged packs.
+    pub mods: usize,
+}
+
+struct Candidate {
+    path: PathBuf,
+    source: Source,
+    thumbnail: Option<PathBuf>,
+}
+
 pub fn scan(roots: &[(PathBuf, Source)], cancelled: &AtomicBool) -> Result<Scan> {
-    let mut mods = Vec::new();
+    scan_with_progress(roots, cancelled, |_| {})
+}
+
+/// Reports discovery, then incremental reading progress over unique pack files.
+pub fn scan_with_progress(
+    roots: &[(PathBuf, Source)],
+    cancelled: &AtomicBool,
+    mut progress: impl FnMut(Progress),
+) -> Result<Scan> {
+    let mut state = Progress::default();
+    progress(state);
     let mut warnings = Vec::new();
+    let candidates = discover(roots, cancelled, &mut warnings)?;
+    state.total = Some(candidates.len());
+    progress(state);
+    let mut mods = Vec::new();
+    for candidate in candidates {
+        if cancelled.load(Ordering::Relaxed) {
+            return Err(Error::Cancelled);
+        }
+        match read_mod(&candidate.path, candidate.source) {
+            Ok(Some(item)) => mods.push(item.with_thumbnail(candidate.thumbnail)),
+            Ok(None) => {}
+            Err(e) => warnings.push(e.message()),
+        }
+        state.completed += 1;
+        state.mods = mods.len();
+        progress(state);
+    }
+    if cancelled.load(Ordering::Relaxed) {
+        return Err(Error::Cancelled);
+    }
+    // A copy or link in `data` shadows the Workshop pack of the same name, as in the
+    // original, so presets that bind by name pick it first.
+    mods.sort_by(|a, b| {
+        a.name
+            .cmp(&b.name)
+            .then((a.source != Source::Data).cmp(&(b.source != Source::Data)))
+            .then(a.path.cmp(&b.path))
+    });
+    let mut catalog = Catalog::new(mods);
+    thumbnail::inherit(&mut catalog);
+    Ok(Scan { catalog, warnings })
+}
+
+fn discover(
+    roots: &[(PathBuf, Source)],
+    cancelled: &AtomicBool,
+    warnings: &mut Vec<crate::localization::Message>,
+) -> Result<Vec<Candidate>> {
+    let mut candidates = Vec::new();
     let mut visited = HashSet::new();
     let mut paths = HashSet::new();
     for (root, source) in roots {
@@ -88,28 +153,16 @@ pub fn scan(roots: &[(PathBuf, Source)], cancelled: &AtomicBool) -> Result<Scan>
                 if !paths.insert(canonical) {
                     continue;
                 }
-                match read_mod(&path, *source) {
-                    Ok(Some(item)) => {
-                        let image = thumbnail::pick(&path, *source, &images);
-                        mods.push(item.with_thumbnail(image));
-                    }
-                    Ok(None) => {}
-                    Err(e) => warnings.push(e.message()),
-                }
+                let thumbnail = thumbnail::pick(&path, *source, &images);
+                candidates.push(Candidate {
+                    path,
+                    source: *source,
+                    thumbnail,
+                });
             }
         }
     }
-    // A copy or link in `data` shadows the Workshop pack of the same name, as in the
-    // original, so presets that bind by name pick it first.
-    mods.sort_by(|a, b| {
-        a.name
-            .cmp(&b.name)
-            .then((a.source != Source::Data).cmp(&(b.source != Source::Data)))
-            .then(a.path.cmp(&b.path))
-    });
-    let mut catalog = Catalog::new(mods);
-    thumbnail::inherit(&mut catalog);
-    Ok(Scan { catalog, warnings })
+    Ok(candidates)
 }
 
 fn read_mod(path: &Path, source: Source) -> Result<Option<Mod>> {

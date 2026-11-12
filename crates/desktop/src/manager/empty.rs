@@ -7,6 +7,7 @@ use gpui_kit::{
     component::{
         Icon, Sizable,
         button::{Button, ButtonVariants},
+        spinner::Spinner,
     },
     prelude::*,
     *,
@@ -54,9 +55,9 @@ fn frame() -> Div {
         .p_6()
 }
 
-fn message(icon: IconName, title: SharedString, detail: SharedString) -> Div {
+fn message(icon: impl IntoElement, title: SharedString, detail: SharedString) -> Div {
     frame()
-        .child(Icon::new(icon).large().text_color(theme::muted()))
+        .child(icon)
         .child(
             div()
                 .text_base()
@@ -197,7 +198,11 @@ impl Manager {
         let l = self.language;
         if self.busy && self.catalog.mods.is_empty() {
             return message(
-                IconName::Loader,
+                div()
+                    .when(self.scan_progress.is_none(), |row| {
+                        row.child(Spinner::new().large().color(theme::muted()))
+                    })
+                    .children(self.scan_progress.clone()),
                 l.text("Reading your mods…", "Читаем ваши моды…").into(),
                 l.text(
                     "Looking through the game and Workshop folders.",
@@ -213,7 +218,7 @@ impl Manager {
         let query = self.search.read(cx).value().trim().to_owned();
         if !query.is_empty() {
             return message(
-                IconName::SearchX,
+                Icon::new(IconName::SearchX).large().text_color(theme::muted()),
                 crate::ui_text!(l, "Nothing matches “{}”", "Ничего не найдено по «{}»", query).into(),
                 l.text(
                     "Search looks at titles, authors, pack names and Workshop IDs. Wrap text in slashes for a /regex/.",
@@ -263,17 +268,23 @@ impl Manager {
                 ),
             ),
         };
-        message(IconName::Inbox, title.into(), detail.into())
-            .child(
-                Button::new("show-all")
-                    .label(l.text("Show all mods", "Показать все моды"))
-                    .small()
-                    .cursor_pointer()
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.filter = Filter::All;
-                        this.set_category_filter(None, cx);
-                    })),
-            )
-            .into_any_element()
+        message(
+            Icon::new(IconName::Inbox)
+                .large()
+                .text_color(theme::muted()),
+            title.into(),
+            detail.into(),
+        )
+        .child(
+            Button::new("show-all")
+                .label(l.text("Show all mods", "Показать все моды"))
+                .small()
+                .cursor_pointer()
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.filter = Filter::All;
+                    this.set_category_filter(None, cx);
+                })),
+        )
+        .into_any_element()
     }
 }
